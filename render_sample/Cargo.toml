@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 winit = "0.26.1"
 erupt = "0.22.0"
+arrayvec = "0.7.2"
+anyhow = "1.0"
