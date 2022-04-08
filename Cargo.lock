@@ -634,6 +634,7 @@ dependencies = [
  "anyhow",
  "arrayvec",
  "erupt",
+ "thiserror",
  "winit",
 ]
 

@@ -1,3 +1,4 @@
+use super::error::*;
 use super::physical_device::*;
 use arrayvec::ArrayVec;
 use erupt::{cstr, vk, EntryLoader, ExtendableFrom, InstanceLoader};
@@ -12,7 +13,7 @@ const VK_KHR_WIN32_SURFACE_EXTENSION_NAME: *const c_char = cstr!("VK_KHR_win32_s
 const VK_KHR_XCB_SURFACE_EXTENSION_NAME: *const c_char = cstr!("VK_KHR_xcb_surface");
 const VK_EXT_DEBUG_UTILS_EXTENSION_NAME: *const c_char = cstr!("VK_EXT_debug_utils");
 
-const MAX_PHYSICAL_DEVICES: u32 = 4;
+const MAX_PHYSICAL_DEVICES: usize = 4;
 
 pub struct InstanceSpec {
     enable_validation: bool,
@@ -32,7 +33,7 @@ pub struct Instance {
     pub instance: Box<InstanceLoader>,
     pub entry: Box<EntryLoader>,
     pub messenger: vk::DebugUtilsMessengerEXT,
-    pub physical_devices: ArrayVec<PhysicalDevice, { MAX_PHYSICAL_DEVICES as usize }>,
+    pub physical_devices: ArrayVec<PhysicalDevice, MAX_PHYSICAL_DEVICES>,
 }
 
 unsafe extern "system" fn debug_callback(
@@ -58,7 +59,7 @@ unsafe extern "system" fn debug_callback(
 }
 
 impl Instance {
-    pub fn new(spec: InstanceSpec) -> Result<Instance, vk::Result> {
+    pub fn new(spec: InstanceSpec) -> VulkanResult<Instance> {
         let entry = Box::new(EntryLoader::new().unwrap());
 
         let mut instance_extensions = ArrayVec::<_, 8>::new();
@@ -118,8 +119,7 @@ impl Instance {
 
         let vkphysical_devices = unsafe { instance.enumerate_physical_devices(None) }.result()?;
 
-        let mut physical_devices =
-            ArrayVec::<PhysicalDevice, { MAX_PHYSICAL_DEVICES as usize }>::new();
+        let mut physical_devices = ArrayVec::<PhysicalDevice, MAX_PHYSICAL_DEVICES>::new();
 
         for vkphysical_device in vkphysical_devices {
             let mut physical_device = PhysicalDevice {
