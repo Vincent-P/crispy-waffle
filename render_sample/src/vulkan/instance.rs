@@ -123,6 +123,7 @@ impl Instance {
 
         for vkphysical_device in vkphysical_devices {
             let mut physical_device = PhysicalDevice {
+                device: vkphysical_device,
                 properties: unsafe { instance.get_physical_device_properties(vkphysical_device) },
                 ..Default::default()
             };

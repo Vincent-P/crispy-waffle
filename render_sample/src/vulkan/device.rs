@@ -42,20 +42,29 @@ impl Device {
             if queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
                 if graphics_family_idx.is_none() {
                     graphics_family_idx = Some(i as u32);
-                    queue_create_infos
-                        .push(vk::DeviceQueueCreateInfoBuilder::new().queue_family_index(i as u32));
+                    queue_create_infos.push(
+                        vk::DeviceQueueCreateInfoBuilder::new()
+                            .queue_family_index(i as u32)
+                            .queue_priorities(&[0.0]),
+                    );
                 }
             } else if queue_family.queue_flags.contains(vk::QueueFlags::COMPUTE) {
                 if compute_family_idx.is_none() {
                     compute_family_idx = Some(i as u32);
-                    queue_create_infos
-                        .push(vk::DeviceQueueCreateInfoBuilder::new().queue_family_index(i as u32));
+                    queue_create_infos.push(
+                        vk::DeviceQueueCreateInfoBuilder::new()
+                            .queue_family_index(i as u32)
+                            .queue_priorities(&[0.0]),
+                    );
                 }
             } else if queue_family.queue_flags.contains(vk::QueueFlags::TRANSFER) {
                 if transfer_family_idx.is_none() {
                     transfer_family_idx = Some(i as u32);
-                    queue_create_infos
-                        .push(vk::DeviceQueueCreateInfoBuilder::new().queue_family_index(i as u32));
+                    queue_create_infos.push(
+                        vk::DeviceQueueCreateInfoBuilder::new()
+                            .queue_family_index(i as u32)
+                            .queue_priorities(&[0.0]),
+                    );
                 }
             }
         }
