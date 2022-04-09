@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 exo = {path= "../exo"}
 winit = "0.26.1"
+raw-window-handle = "0.4.2"
 erupt = "0.22.0"
 arrayvec = "0.7.2"
 anyhow = "1.0"

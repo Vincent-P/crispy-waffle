@@ -19,8 +19,9 @@ pub struct DeviceSpec<'a> {
     pub push_constant_size: usize,
 }
 
-pub struct Device {
+pub struct Device<'a> {
     pub device: Box<DeviceLoader>,
+    pub spec: DeviceSpec<'a>,
     pub allocator: GpuAllocator<vk::DeviceMemory>,
     pub graphics_family_idx: u32,
     pub compute_family_idx: u32,
@@ -28,8 +29,8 @@ pub struct Device {
     pub images: Pool<Image>,
 }
 
-impl Device {
-    pub fn new(instance: &Instance, spec: &DeviceSpec) -> VulkanResult<Self> {
+impl<'a> Device<'a> {
+    pub fn new(instance: &'a Instance, spec: DeviceSpec<'a>) -> VulkanResult<Self> {
         let mut device_extensions = ArrayVec::<_, 8>::new();
         device_extensions.push(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
@@ -106,6 +107,7 @@ impl Device {
 
         Ok(Device {
             device,
+            spec,
             allocator,
             graphics_family_idx,
             compute_family_idx,
@@ -114,7 +116,7 @@ impl Device {
         })
     }
 
-    pub fn destroy(&mut self) {
+    pub fn destroy(self) {
         unsafe { self.device.destroy_device(None) };
     }
 }

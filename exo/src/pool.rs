@@ -68,10 +68,11 @@ impl<T> Pool<T> {
     pub fn add(&mut self, value: T) -> Handle<T> {
         if self.freelist_head.is_none() {
             let old_capacity = self.values.len();
-            self.values.resize_with(2 * old_capacity, || {
-                (Metadata { flags: 0 }, Entry::Empty(None))
-            });
+            let new_capacity = 2 * old_capacity.max(1);
+            self.values
+                .resize_with(new_capacity, || (Metadata { flags: 0 }, Entry::Empty(None)));
             self.init_freelist(old_capacity);
+            self.freelist_head = self.values[old_capacity].1.as_empty().unwrap();
         }
 
         let i_element = self.freelist_head.unwrap();
@@ -83,6 +84,7 @@ impl<T> Pool<T> {
 
         assert!(!metadata.get_is_occupied());
         metadata.set_is_occupied(true);
+        assert!(metadata.get_is_occupied());
 
         self.size += 1;
 
@@ -113,6 +115,7 @@ impl<T> Pool<T> {
         assert!(handle.generation == metadata.get_generation());
 
         metadata.set_is_occupied(false);
+        assert!(!metadata.get_is_occupied());
         metadata.set_generation(handle.generation + 1);
 
         *element = Entry::Empty(self.freelist_head);
@@ -131,12 +134,11 @@ impl Metadata {
     }
 
     pub fn set_is_occupied(&mut self, is_occupied: bool) {
-        let mask = if is_occupied {
-            !OCCUPIED_MASK
+        if is_occupied {
+            self.flags |= OCCUPIED_MASK
         } else {
-            OCCUPIED_MASK
+            self.flags &= !OCCUPIED_MASK
         };
-        self.flags &= mask;
     }
 
     pub fn get_generation(&self) -> u32 {

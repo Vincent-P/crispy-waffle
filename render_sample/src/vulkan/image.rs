@@ -31,6 +31,21 @@ pub struct ImageSpec {
     pub usages: vk::ImageUsageFlags,
 }
 
+impl Default for ImageSpec {
+    fn default() -> Self {
+        Self {
+            size: [1, 1, 1],
+            mip_levels: 1,
+            image_type: vk::ImageType::_2D,
+            format: vk::Format::R8G8B8A8_UNORM,
+            samples: vk::SampleCountFlagBits::_1,
+            usages: vk::ImageUsageFlags::TRANSFER_SRC
+                | vk::ImageUsageFlags::TRANSFER_DST
+                | vk::ImageUsageFlags::SAMPLED,
+        }
+    }
+}
+
 pub struct ImageView {
     pub range: vk::ImageSubresourceRange,
     pub vkhandle: vk::ImageView,
@@ -47,7 +62,7 @@ pub struct Image {
     pub state: ImageState,
 }
 
-impl Device {
+impl<'a> Device<'a> {
     fn create_image_view(
         &mut self,
         image: vk::Image,

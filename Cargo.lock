@@ -671,6 +671,7 @@ dependencies = [
  "exo",
  "gpu-alloc",
  "gpu-alloc-erupt",
+ "raw-window-handle",
  "thiserror",
  "winit",
 ]

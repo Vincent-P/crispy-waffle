@@ -152,7 +152,7 @@ impl Instance {
         })
     }
 
-    pub fn destroy(&mut self) {
+    pub fn destroy(self) {
         unsafe {
             self.instance
                 .destroy_debug_utils_messenger_ext(self.messenger, None);

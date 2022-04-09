@@ -1,6 +1,7 @@
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
+    platform::run_return::EventLoopExtRunReturn,
     window::WindowBuilder,
 };
 
@@ -13,10 +14,10 @@ use erupt::vk;
 mod vulkan;
 
 fn main() -> Result<()> {
-    let event_loop = EventLoop::new();
+    let mut event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    let mut instance = vulkan::Instance::new(vulkan::InstanceSpec::default())?;
+    let instance = vulkan::Instance::new(vulkan::InstanceSpec::default())?;
 
     let mut i_selected = None;
     for (i_device, physical_device) in (&instance.physical_devices).into_iter().enumerate() {
@@ -49,13 +50,15 @@ fn main() -> Result<()> {
 
     let mut device = vulkan::Device::new(
         &instance,
-        &vulkan::DeviceSpec {
+        vulkan::DeviceSpec {
             physical_device: &instance.physical_devices[i_selected],
             push_constant_size: 0,
         },
     )?;
 
-    event_loop.run(move |event, _, control_flow| {
+    let surface = vulkan::Surface::new(&instance, &mut device, &window)?;
+
+    event_loop.run_return(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
         match event {
@@ -64,11 +67,12 @@ fn main() -> Result<()> {
                 window_id,
             } if window_id == window.id() => *control_flow = ControlFlow::Exit,
 
-            Event::LoopDestroyed => {
-                device.destroy();
-                instance.destroy();
-            }
             _ => (),
         }
     });
+
+    surface.destroy(&instance, &mut device);
+    device.destroy();
+    instance.destroy();
+    Ok(())
 }
