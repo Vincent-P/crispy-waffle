@@ -6,8 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+exo = {path= "../exo"}
 winit = "0.26.1"
 erupt = "0.22.0"
 arrayvec = "0.7.2"
 anyhow = "1.0"
 thiserror = "1.0"
+gpu-alloc = "0.5.3"
+gpu-alloc-erupt = "0.7.0"

@@ -1,9 +1,15 @@
 use super::error::*;
+use super::image::*;
 use super::instance::*;
 use super::physical_device::*;
 
+use exo::pool::Pool;
+
 use arrayvec::ArrayVec;
 use erupt::{cstr, vk, DeviceLoader};
+
+use gpu_alloc::{Config, GpuAllocator};
+
 use std::os::raw::c_char;
 
 const VK_KHR_SWAPCHAIN_EXTENSION_NAME: *const c_char = cstr!("VK_KHR_swapchain");
@@ -15,9 +21,11 @@ pub struct DeviceSpec<'a> {
 
 pub struct Device {
     pub device: Box<DeviceLoader>,
+    pub allocator: GpuAllocator<vk::DeviceMemory>,
     pub graphics_family_idx: u32,
     pub compute_family_idx: u32,
     pub transfer_family_idx: u32,
+    pub images: Pool<Image>,
 }
 
 impl Device {
@@ -90,11 +98,19 @@ impl Device {
         .unwrap();
         let device = Box::new(device);
 
+        let props = unsafe {
+            gpu_alloc_erupt::device_properties(&instance.instance, spec.physical_device.device)
+        }?;
+        let config = Config::i_am_prototyping();
+        let allocator = GpuAllocator::new(config, props);
+
         Ok(Device {
             device,
+            allocator,
             graphics_family_idx,
             compute_family_idx,
             transfer_family_idx,
+            images: Pool::new(),
         })
     }
 
