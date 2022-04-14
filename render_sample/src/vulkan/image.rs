@@ -9,7 +9,7 @@ use gpu_alloc_erupt::EruptMemoryDevice;
 
 #[derive(Clone, Copy)]
 pub enum ImageState {
-    None,
+    Null,
     GraphicsShaderRead,
     GraphicsShaderReadWrite,
     ComputeShaderRead,
@@ -19,6 +19,12 @@ pub enum ImageState {
     ColorAttachment,
     DepthAttachment,
     Present,
+}
+
+pub struct ImageAccess {
+    pub stage: vk::PipelineStageFlags,
+    pub access: vk::AccessFlags,
+    pub layout: vk::ImageLayout,
 }
 
 #[derive(Clone)]
@@ -153,7 +159,7 @@ impl<'a> Device<'a> {
             memory_block: Some(memory_block),
             spec,
             full_view,
-            state: ImageState::None,
+            state: ImageState::Null,
         }))
     }
 
@@ -187,7 +193,7 @@ impl<'a> Device<'a> {
             memory_block: None,
             spec,
             full_view,
-            state: ImageState::None,
+            state: ImageState::Null,
         }))
     }
 
@@ -205,5 +211,135 @@ impl<'a> Device<'a> {
                 .destroy_image_view(image.full_view.vkhandle, None);
         }
         self.images.remove(image_handle);
+    }
+}
+
+impl ImageState {
+    pub fn get_src_access(self) -> ImageAccess {
+        let (stage, access, layout) = match self {
+            Self::Null => (
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                vk::AccessFlags::NONE,
+                vk::ImageLayout::UNDEFINED,
+            ),
+            Self::GraphicsShaderRead => (
+                vk::PipelineStageFlags::VERTEX_SHADER,
+                vk::AccessFlags::NONE,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            ),
+            Self::GraphicsShaderReadWrite => (
+                vk::PipelineStageFlags::VERTEX_SHADER | vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::AccessFlags::SHADER_WRITE,
+                vk::ImageLayout::GENERAL,
+            ),
+            Self::ComputeShaderRead => (
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::AccessFlags::NONE,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            ),
+            Self::ComputeShaderReadWrite => (
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::AccessFlags::SHADER_WRITE,
+                vk::ImageLayout::GENERAL,
+            ),
+            Self::TransferDst => (
+                vk::PipelineStageFlags::TRANSFER,
+                vk::AccessFlags::TRANSFER_WRITE,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            ),
+            Self::TransferSrc => (
+                vk::PipelineStageFlags::TRANSFER,
+                vk::AccessFlags::NONE,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            ),
+            Self::ColorAttachment => (
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            ),
+
+            Self::DepthAttachment => (
+                vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+                vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+            ),
+
+            Self::Present => (
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                vk::AccessFlags::NONE,
+                vk::ImageLayout::PRESENT_SRC_KHR,
+            ),
+        };
+
+        ImageAccess {
+            stage,
+            access,
+            layout,
+        }
+    }
+
+    pub fn get_dst_access(self) -> ImageAccess {
+        let (stage, access, layout) = match self {
+            Self::Null => (
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::AccessFlags::NONE,
+                vk::ImageLayout::UNDEFINED,
+            ),
+            Self::GraphicsShaderRead => (
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::AccessFlags::SHADER_READ,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            ),
+            Self::GraphicsShaderReadWrite => (
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::AccessFlags::SHADER_WRITE,
+                vk::ImageLayout::GENERAL,
+            ),
+            Self::ComputeShaderRead => (
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::AccessFlags::SHADER_READ,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            ),
+            Self::ComputeShaderReadWrite => (
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::AccessFlags::SHADER_WRITE | vk::AccessFlags::SHADER_WRITE,
+                vk::ImageLayout::GENERAL,
+            ),
+            Self::TransferDst => (
+                vk::PipelineStageFlags::TRANSFER,
+                vk::AccessFlags::TRANSFER_WRITE,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            ),
+            Self::TransferSrc => (
+                vk::PipelineStageFlags::TRANSFER,
+                vk::AccessFlags::TRANSFER_READ,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            ),
+            Self::ColorAttachment => (
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                vk::AccessFlags::COLOR_ATTACHMENT_WRITE | vk::AccessFlags::COLOR_ATTACHMENT_READ,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            ),
+
+            Self::DepthAttachment => (
+                vk::PipelineStageFlags::LATE_FRAGMENT_TESTS
+                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+                vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
+                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
+                vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+            ),
+
+            Self::Present => (
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                vk::AccessFlags::NONE,
+                vk::ImageLayout::PRESENT_SRC_KHR,
+            ),
+        };
+
+        ImageAccess {
+            stage,
+            access,
+            layout,
+        }
     }
 }

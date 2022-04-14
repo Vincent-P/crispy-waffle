@@ -1,11 +1,18 @@
+mod context_pool;
+mod contexts;
 mod device;
 mod error;
+mod fence;
 mod image;
 mod instance;
 mod physical_device;
+mod queues;
 mod surface;
+pub use context_pool::*;
+pub use contexts::*;
 pub use device::*;
 pub use error::*;
+pub use fence::*;
 pub use image::*;
 pub use instance::*;
 pub use physical_device::*;

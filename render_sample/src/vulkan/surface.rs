@@ -19,6 +19,8 @@ pub struct Surface {
     pub present_mode: vk::PresentModeKHR,
     pub format: vk::SurfaceFormatKHR,
     pub size: [i32; 2],
+    pub current_image: usize,
+    pub previous_image: usize,
     pub images: PerImage<Handle<Image>>,
     pub image_acquired_semaphores: PerImage<vk::Semaphore>,
     pub can_present_semaphores: PerImage<vk::Semaphore>,
@@ -97,6 +99,8 @@ impl Surface {
             present_mode,
             format,
             size: [0, 0],
+            current_image: 0,
+            previous_image: 0,
             images: ArrayVec::new(),
             image_acquired_semaphores: ArrayVec::new(),
             can_present_semaphores: ArrayVec::new(),
@@ -107,12 +111,11 @@ impl Surface {
         Ok(surface)
     }
 
-    pub fn destroy(mut self, instance: &Instance, device: &mut Device) -> VulkanResult<()> {
-        self.destroy_swapchain(device)?;
+    pub fn destroy(mut self, instance: &Instance, device: &mut Device) {
+        self.destroy_swapchain(device);
         unsafe {
             instance.instance.destroy_surface_khr(self.surface, None);
         }
-        Ok(())
     }
 
     pub fn create_swapchain(
@@ -201,7 +204,7 @@ impl Surface {
         Ok(())
     }
 
-    pub fn destroy_swapchain(&mut self, device: &mut Device) -> VulkanResult<()> {
+    pub fn destroy_swapchain(&mut self, device: &mut Device) {
         for &image in &self.images {
             device.destroy_image(image);
         }
@@ -221,7 +224,5 @@ impl Surface {
 
         unsafe { device.device.destroy_swapchain_khr(self.swapchain, None) }
         self.swapchain = vk::SwapchainKHR::null();
-
-        Ok(())
     }
 }
