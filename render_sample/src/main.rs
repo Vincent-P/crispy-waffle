@@ -1,3 +1,6 @@
+use anyhow::Result;
+use erupt::vk;
+use std::{ffi::CStr, os::raw::c_char};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -5,13 +8,11 @@ use winit::{
     window::WindowBuilder,
 };
 
-use std::{ffi::CStr, os::raw::c_char};
-
-use anyhow::Result;
-
-use erupt::vk;
+use crate::vulkan::{contexts::TransferContextMethods, error::VulkanResult};
 
 mod vulkan;
+
+const FRAME_QUEUE_LENGTH: usize = 2;
 
 fn main() -> Result<()> {
     let mut event_loop = EventLoop::new();
@@ -57,9 +58,42 @@ fn main() -> Result<()> {
     )?;
 
     let surface = vulkan::Surface::new(&instance, &mut device, &window)?;
+    let mut context_pools: [vulkan::ContextPool; FRAME_QUEUE_LENGTH] =
+        [device.create_context_pool()?, device.create_context_pool()?];
 
-    event_loop.run_return(move |event, _, control_flow| {
+    let mut i_frame: usize = 0;
+    let fence = device.create_fence()?;
+
+    event_loop.run_return(|event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
+
+        let mut draw = || -> VulkanResult<_> {
+            let current_frame = i_frame % FRAME_QUEUE_LENGTH;
+            let context_pool = &mut context_pools[current_frame];
+
+            let wait_value: u64 = if i_frame < FRAME_QUEUE_LENGTH {
+                0
+            } else {
+                (i_frame - FRAME_QUEUE_LENGTH + 1) as u64
+            };
+            device.wait_for_fences(&[&fence], &[wait_value])?;
+
+            device.reset_context_pool(context_pool)?;
+            let mut ctx = device.get_graphics_context(context_pool)?;
+            ctx.begin()?;
+            ctx.wait_for_acquired(&surface, vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT);
+            ctx.barrier(
+                surface.images[surface.current_image as usize],
+                vulkan::ImageState::ColorAttachment,
+            );
+            ctx.end()?;
+            ctx.prepare_present(&surface);
+            device.submit(&ctx, &[&fence], &[(i_frame as u64) + 1])?;
+            let outdated = device.present(&ctx, &surface)?;
+            i_frame += 1;
+
+            Ok(())
+        };
 
         match event {
             Event::WindowEvent {
@@ -67,9 +101,19 @@ fn main() -> Result<()> {
                 window_id,
             } if window_id == window.id() => *control_flow = ControlFlow::Exit,
 
+            Event::RedrawEventsCleared => {
+                if let Err(_) = draw() {
+                    *control_flow = ControlFlow::Exit;
+                }
+            }
+
             _ => (),
         }
     });
+
+    for context_pool in context_pools {
+        device.destroy_context_pool(context_pool);
+    }
 
     surface.destroy(&instance, &mut device);
     device.destroy();

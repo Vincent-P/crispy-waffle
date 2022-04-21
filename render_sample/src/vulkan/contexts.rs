@@ -11,19 +11,19 @@ use exo::pool::Handle;
 use arrayvec::ArrayVec;
 use erupt::vk;
 
-const MAX_SEMAPHORES: usize = 4;
+pub const MAX_SEMAPHORES: usize = 4;
 
 pub struct BaseContext<'a> {
-    device: &'a Device<'a>,
-    cmd: vk::CommandBuffer,
-    wait_fence_list: ArrayVec<Fence, MAX_SEMAPHORES>,
-    wait_value_list: ArrayVec<u64, MAX_SEMAPHORES>,
-    wait_stage_list: ArrayVec<vk::PipelineStageFlags, MAX_SEMAPHORES>,
-    queue: vk::Queue,
-    queue_type: usize,
-    image_acquired_semaphore: Option<vk::Semaphore>,
-    image_acquired_stage: Option<vk::PipelineStageFlags>,
-    signal_present_semaphore: Option<vk::Semaphore>,
+    pub device: &'a Device<'a>,
+    pub cmd: vk::CommandBuffer,
+    pub wait_fence_list: ArrayVec<Fence, MAX_SEMAPHORES>,
+    pub wait_value_list: ArrayVec<u64, MAX_SEMAPHORES>,
+    pub wait_stage_list: ArrayVec<vk::PipelineStageFlags, MAX_SEMAPHORES>,
+    pub queue: vk::Queue,
+    pub queue_type: usize,
+    pub image_acquired_semaphore: Option<vk::Semaphore>,
+    pub image_acquired_stage: Option<vk::PipelineStageFlags>,
+    pub can_present_semaphore: Option<vk::Semaphore>,
 }
 
 pub struct TransferContext<'a> {
@@ -89,7 +89,7 @@ impl<'a> Device<'a> {
             queue_type: i_queue,
             image_acquired_semaphore: None,
             image_acquired_stage: None,
-            signal_present_semaphore: None,
+            can_present_semaphore: None,
         })
     }
 
@@ -153,8 +153,14 @@ pub trait TransferContextMethods: HasBaseContext {
     fn wait_for_acquired(&mut self, surface: &Surface, stage_dst: vk::PipelineStageFlags) {
         let base_context = self.base_context_mut();
         base_context.image_acquired_semaphore =
-            Some(surface.image_acquired_semaphores[surface.previous_image]);
+            Some(surface.image_acquired_semaphores[surface.previous_image as usize]);
         base_context.image_acquired_stage = Some(stage_dst);
+    }
+
+    fn prepare_present(&mut self, surface: &Surface) {
+        let base_context = self.base_context_mut();
+        base_context.can_present_semaphore =
+            Some(surface.can_present_semaphores[surface.previous_image as usize]);
     }
 
     fn barrier(&self, image_handle: Handle<Image>, state_dst: ImageState) {
@@ -163,7 +169,7 @@ pub trait TransferContextMethods: HasBaseContext {
         let image = base_context.device.images.get(image_handle);
 
         let src_access = image.state.get_src_access();
-        let dst_access = image.state.get_dst_access();
+        let dst_access = state_dst.get_dst_access();
 
         const QUEUE_FAMILY_IGNORED: u32 = !0u32;
         let barrier = vk::ImageMemoryBarrierBuilder::new()

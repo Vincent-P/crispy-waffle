@@ -302,7 +302,7 @@ impl ImageState {
             ),
             Self::ComputeShaderReadWrite => (
                 vk::PipelineStageFlags::COMPUTE_SHADER,
-                vk::AccessFlags::SHADER_WRITE | vk::AccessFlags::SHADER_WRITE,
+                vk::AccessFlags::SHADER_READ | vk::AccessFlags::SHADER_WRITE,
                 vk::ImageLayout::GENERAL,
             ),
             Self::TransferDst => (

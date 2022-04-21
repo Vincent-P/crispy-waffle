@@ -1,15 +1,16 @@
+use super::contexts::*;
 use super::error::*;
+use super::fence::*;
 use super::image::*;
 use super::instance::*;
 use super::physical_device::*;
+use super::surface::*;
 
 use exo::pool::Pool;
 
 use arrayvec::ArrayVec;
-use erupt::{cstr, vk, DeviceLoader};
-
+use erupt::{cstr, vk, DeviceLoader, ExtendableFrom};
 use gpu_alloc::{Config, GpuAllocator};
-
 use std::os::raw::c_char;
 
 const VK_KHR_SWAPCHAIN_EXTENSION_NAME: *const c_char = cstr!("VK_KHR_swapchain");
@@ -118,5 +119,88 @@ impl<'a> Device<'a> {
 
     pub fn destroy(self) {
         unsafe { self.device.destroy_device(None) };
+    }
+
+    pub fn submit(
+        &self,
+        context: &dyn HasBaseContext,
+        signal_fences: &[&Fence],
+        signal_values: &[u64],
+    ) -> VulkanResult<()> {
+        let context = context.base_context();
+
+        let mut signal_list = ArrayVec::<vk::Semaphore, 4>::new();
+        let mut local_signal_values = ArrayVec::<u64, 4>::new();
+        for fence in signal_fences {
+            signal_list.push(fence.timeline_semaphore);
+        }
+
+        for value in signal_values {
+            local_signal_values.push(*value);
+        }
+
+        if let Some(semaphore) = context.can_present_semaphore {
+            signal_list.push(semaphore);
+            local_signal_values.push(0);
+        }
+
+        let mut semaphore_list = ArrayVec::<vk::Semaphore, { MAX_SEMAPHORES + 1 }>::new();
+        let mut value_list = ArrayVec::<u64, { MAX_SEMAPHORES + 1 }>::new();
+        let mut stage_list = ArrayVec::<vk::PipelineStageFlags, { MAX_SEMAPHORES + 1 }>::new();
+
+        for i in 0..context.wait_fence_list.len() {
+            semaphore_list.push(context.wait_fence_list[i].timeline_semaphore);
+            value_list.push(context.wait_value_list[i]);
+            stage_list.push(context.wait_stage_list[i]);
+        }
+
+        if let Some(semaphore) = context.image_acquired_semaphore {
+            semaphore_list.push(semaphore);
+            value_list.push(0);
+            stage_list.push(context.image_acquired_stage.unwrap());
+        }
+
+        let mut timeline_info = vk::TimelineSemaphoreSubmitInfoBuilder::new()
+            .wait_semaphore_values(&value_list)
+            .signal_semaphore_values(&local_signal_values);
+
+        let command_buffers = [context.cmd];
+
+        let submit_info = vk::SubmitInfoBuilder::new()
+            .extend_from(&mut timeline_info)
+            .wait_semaphores(&semaphore_list)
+            .command_buffers(&command_buffers)
+            .signal_semaphores(&signal_list);
+
+        unsafe {
+            self.device
+                .queue_submit(context.queue, &[submit_info], vk::Fence::null())
+                .result()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn present(&self, context: &dyn HasBaseContext, surface: &Surface) -> VulkanResult<bool> {
+        let context = context.base_context();
+
+        let wait_semaphores = [surface.can_present_semaphores[surface.current_image as usize]];
+        let swapchains = [surface.swapchain];
+        let image_indices = [surface.current_image];
+
+        let present_info = vk::PresentInfoKHRBuilder::new()
+            .wait_semaphores(&wait_semaphores)
+            .swapchains(&swapchains)
+            .image_indices(&image_indices);
+
+        let res = unsafe { self.device.queue_present_khr(context.queue, &present_info) };
+
+        let outdated =
+            res.raw == vk::Result::SUBOPTIMAL_KHR || res.raw == vk::Result::ERROR_OUT_OF_DATE_KHR;
+
+        match res.result() {
+            Ok(_) => Ok(outdated),
+            Err(code) => Err(VulkanError::APIError(code)),
+        }
     }
 }

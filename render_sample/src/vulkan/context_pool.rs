@@ -4,6 +4,7 @@ use super::queues;
 
 use erupt::vk;
 
+#[derive(Debug)]
 pub struct ContextPool {
     pub command_pools: [vk::CommandPool; queues::COUNT],
     pub command_buffers: [Vec<vk::CommandBuffer>; queues::COUNT],
@@ -23,7 +24,7 @@ impl<'a> Device<'a> {
         let transfer_pool = unsafe { self.device.create_command_pool(&pool_info, None).result()? };
 
         Ok(ContextPool {
-            command_pools: [graphics_pool, compute_pool, transfer_pool],
+            command_pools: [transfer_pool, compute_pool, graphics_pool],
             command_buffers: Default::default(),
             command_buffers_is_used: Default::default(),
         })
