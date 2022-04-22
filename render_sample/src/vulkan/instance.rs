@@ -33,7 +33,6 @@ pub struct Instance {
     pub instance: Box<InstanceLoader>,
     pub entry: Box<EntryLoader>,
     pub messenger: vk::DebugUtilsMessengerEXT,
-    pub physical_devices: ArrayVec<PhysicalDevice, MAX_PHYSICAL_DEVICES>,
 }
 
 unsafe extern "system" fn debug_callback(
@@ -117,38 +116,10 @@ impl Instance {
             Default::default()
         };
 
-        let vkphysical_devices = unsafe { instance.enumerate_physical_devices(None) }.result()?;
-
-        let mut physical_devices = ArrayVec::<PhysicalDevice, MAX_PHYSICAL_DEVICES>::new();
-
-        for vkphysical_device in vkphysical_devices {
-            let mut physical_device = PhysicalDevice {
-                device: vkphysical_device,
-                properties: unsafe { instance.get_physical_device_properties(vkphysical_device) },
-                ..Default::default()
-            };
-
-            let mut featuresvk12_builder = vk::PhysicalDeviceVulkan12FeaturesBuilder::new();
-            let mut features2_builder = vk::PhysicalDeviceFeatures2Builder::new();
-
-            features2_builder = features2_builder.extend_from(&mut featuresvk12_builder);
-            physical_device.features = unsafe {
-                instance.get_physical_device_features2(
-                    vkphysical_device,
-                    Some(features2_builder.build_dangling()),
-                )
-            };
-
-            physical_device.vulkan12_features = *featuresvk12_builder;
-
-            physical_devices.push(physical_device);
-        }
-
         Ok(Instance {
             entry,
             instance,
             messenger,
-            physical_devices,
         })
     }
 
@@ -158,5 +129,38 @@ impl Instance {
                 .destroy_debug_utils_messenger_ext(self.messenger, None);
             self.instance.destroy_instance(None);
         }
+    }
+
+    pub fn get_physical_devices(
+        &self,
+    ) -> VulkanResult<ArrayVec<PhysicalDevice, MAX_PHYSICAL_DEVICES>> {
+        let vkphysical_devices =
+            unsafe { self.instance.enumerate_physical_devices(None) }.result()?;
+
+        let mut physical_devices = ArrayVec::<PhysicalDevice, MAX_PHYSICAL_DEVICES>::new();
+
+        for vkphysical_device in vkphysical_devices {
+            physical_devices.push(PhysicalDevice {
+                device: vkphysical_device,
+                properties: unsafe {
+                    self.instance
+                        .get_physical_device_properties(vkphysical_device)
+                },
+                ..Default::default()
+            });
+            let physical_device = physical_devices.as_mut_slice().last_mut().unwrap();
+
+            physical_device.features.p_next =
+                &mut physical_device.vulkan12_features as *mut _ as *mut c_void;
+
+            physical_device.features = unsafe {
+                self.instance.get_physical_device_features2(
+                    vkphysical_device,
+                    Some(physical_device.features),
+                )
+            };
+        }
+
+        Ok(physical_devices)
     }
 }

@@ -19,9 +19,10 @@ fn main() -> Result<()> {
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     let instance = vulkan::Instance::new(vulkan::InstanceSpec::default())?;
+    let mut physical_devices = instance.get_physical_devices()?;
 
     let mut i_selected = None;
-    for (i_device, physical_device) in (&instance.physical_devices).into_iter().enumerate() {
+    for (i_device, physical_device) in (&physical_devices).into_iter().enumerate() {
         let device_name =
             unsafe { CStr::from_ptr(&physical_device.properties.device_name as *const c_char) };
         println!("Found device: {:?}", device_name);
@@ -38,9 +39,8 @@ fn main() -> Result<()> {
 
     if i_selected.is_none() {
         i_selected = Some(0);
-        let device_name = unsafe {
-            CStr::from_ptr(&instance.physical_devices[0].properties.device_name as *const c_char)
-        };
+        let device_name =
+            unsafe { CStr::from_ptr(&physical_devices[0].properties.device_name as *const c_char) };
         println!(
             "No discrete GPU found, defaulting to device #0 {:?}.",
             device_name
@@ -52,12 +52,12 @@ fn main() -> Result<()> {
     let mut device = vulkan::Device::new(
         &instance,
         vulkan::DeviceSpec {
-            physical_device: &instance.physical_devices[i_selected],
+            physical_device: &mut physical_devices[i_selected],
             push_constant_size: 0,
         },
     )?;
 
-    let surface = vulkan::Surface::new(&instance, &mut device, &window)?;
+    let mut surface = vulkan::Surface::new(&instance, &mut device, &window)?;
     let mut context_pools: [vulkan::ContextPool; FRAME_QUEUE_LENGTH] =
         [device.create_context_pool()?, device.create_context_pool()?];
 
@@ -79,12 +79,14 @@ fn main() -> Result<()> {
             device.wait_for_fences(&[&fence], &[wait_value])?;
 
             device.reset_context_pool(context_pool)?;
+            let outdated = device.acquire_next_swapchain(&mut surface);
+
             let mut ctx = device.get_graphics_context(context_pool)?;
             ctx.begin()?;
             ctx.wait_for_acquired(&surface, vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT);
             ctx.barrier(
                 surface.images[surface.current_image as usize],
-                vulkan::ImageState::ColorAttachment,
+                vulkan::ImageState::Present,
             );
             ctx.end()?;
             ctx.prepare_present(&surface);
@@ -111,6 +113,8 @@ fn main() -> Result<()> {
         }
     });
 
+    device.wait_idle()?;
+    device.destroy_fence(fence);
     for context_pool in context_pools {
         device.destroy_context_pool(context_pool);
     }

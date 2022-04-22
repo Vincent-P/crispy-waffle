@@ -8,8 +8,9 @@ use exo::pool::Handle;
 use arrayvec::ArrayVec;
 use erupt::vk;
 use raw_window_handle::HasRawWindowHandle;
+use std::ffi::{CStr, CString};
 
-const MAX_SWAPCHAIN_IMAGES: usize = 4;
+const MAX_SWAPCHAIN_IMAGES: usize = 6;
 
 type PerImage<T> = ArrayVec<T, MAX_SWAPCHAIN_IMAGES>;
 
@@ -135,7 +136,7 @@ impl Surface {
         self.size[0] = capabilities.current_extent.width as i32;
         self.size[1] = capabilities.current_extent.height as i32;
 
-        let image_count = (capabilities.min_image_count + 1).max(capabilities.max_image_count);
+        let image_count = (capabilities.min_image_count + 1).min(capabilities.max_image_count);
 
         let image_usages = vk::ImageUsageFlags::COLOR_ATTACHMENT
             | vk::ImageUsageFlags::STORAGE
@@ -172,6 +173,10 @@ impl Surface {
 
         assert!(self.images.is_empty());
         for i_image in 0..swapchain_images.len() {
+            if swapchain_images[i_image] == vk::Image::null() {
+                break;
+            }
+
             self.images.push(device.create_image_proxy(
                 ImageSpec {
                     size: [self.size[0], self.size[1], 1],
@@ -192,12 +197,27 @@ impl Surface {
                         .create_semaphore(&semaphore_create_info, None)
                         .result()?,
                 );
+
+                let raw_handle = self.image_acquired_semaphores.as_slice().last().unwrap().0;
+                device.set_vk_name(
+                    raw_handle,
+                    vk::ObjectType::SEMAPHORE,
+                    &format!("swapchain image_acquired #{}", i),
+                )?;
+
                 self.can_present_semaphores.push(
                     device
                         .device
                         .create_semaphore(&semaphore_create_info, None)
                         .result()?,
                 );
+
+                let raw_handle = self.can_present_semaphores.as_slice().last().unwrap().0;
+                device.set_vk_name(
+                    raw_handle,
+                    vk::ObjectType::SEMAPHORE,
+                    &format!("swapchain can_present #{}", i),
+                )?;
             }
         }
 

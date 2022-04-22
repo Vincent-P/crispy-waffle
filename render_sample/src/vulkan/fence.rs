@@ -13,7 +13,9 @@ impl Device<'_> {
     pub fn create_fence(&mut self) -> VulkanResult<Fence> {
         let value: u64 = 0;
 
-        let mut timeline_info = vk::SemaphoreTypeCreateInfoBuilder::new().initial_value(value);
+        let mut timeline_info = vk::SemaphoreTypeCreateInfoBuilder::new()
+            .semaphore_type(vk::SemaphoreType::TIMELINE_KHR)
+            .initial_value(value);
         let semaphore_info = vk::SemaphoreCreateInfoBuilder::new().extend_from(&mut timeline_info);
 
         let timeline_semaphore = unsafe {
@@ -21,6 +23,12 @@ impl Device<'_> {
                 .create_semaphore(&semaphore_info.build_dangling(), None)
                 .result()?
         };
+
+        self.set_vk_name(
+            timeline_semaphore.0,
+            vk::ObjectType::SEMAPHORE,
+            "timeline_semaphore",
+        )?;
 
         Ok(Fence {
             timeline_semaphore,

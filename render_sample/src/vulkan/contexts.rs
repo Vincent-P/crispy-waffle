@@ -160,7 +160,7 @@ pub trait TransferContextMethods: HasBaseContext {
     fn prepare_present(&mut self, surface: &Surface) {
         let base_context = self.base_context_mut();
         base_context.can_present_semaphore =
-            Some(surface.can_present_semaphores[surface.previous_image as usize]);
+            Some(surface.can_present_semaphores[surface.current_image as usize]);
     }
 
     fn barrier(&self, image_handle: Handle<Image>, state_dst: ImageState) {

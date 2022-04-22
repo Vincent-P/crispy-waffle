@@ -11,12 +11,13 @@ use exo::pool::Pool;
 use arrayvec::ArrayVec;
 use erupt::{cstr, vk, DeviceLoader, ExtendableFrom};
 use gpu_alloc::{Config, GpuAllocator};
+use std::ffi::CString;
 use std::os::raw::c_char;
 
 const VK_KHR_SWAPCHAIN_EXTENSION_NAME: *const c_char = cstr!("VK_KHR_swapchain");
 
 pub struct DeviceSpec<'a> {
-    pub physical_device: &'a PhysicalDevice,
+    pub physical_device: &'a mut PhysicalDevice,
     pub push_constant_size: usize,
 }
 
@@ -88,9 +89,22 @@ impl<'a> Device<'a> {
 
         let device_info = vk::DeviceCreateInfoBuilder::new()
             .queue_create_infos(&queue_create_infos)
-            .enabled_extension_names(&device_extensions);
+            .enabled_extension_names(&device_extensions)
+            .extend_from(&mut spec.physical_device.features);
 
         let device = unsafe {
+            let device_info = device_info.build_dangling();
+
+            let mut base_struct = &device_info as *const _ as *const vk::BaseInStructure;
+            loop {
+                if base_struct == std::ptr::null() {
+                    break;
+                }
+
+                eprintln!("stype: {:?}", (*base_struct).s_type);
+                base_struct = (*base_struct).p_next as *const vk::BaseInStructure;
+            }
+
             DeviceLoader::new(
                 &instance.instance,
                 spec.physical_device.device,
@@ -169,6 +183,7 @@ impl<'a> Device<'a> {
         let submit_info = vk::SubmitInfoBuilder::new()
             .extend_from(&mut timeline_info)
             .wait_semaphores(&semaphore_list)
+            .wait_dst_stage_mask(&stage_list)
             .command_buffers(&command_buffers)
             .signal_semaphores(&signal_list);
 
@@ -179,6 +194,28 @@ impl<'a> Device<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn acquire_next_swapchain(&self, surface: &mut Surface) -> VulkanResult<bool> {
+        surface.previous_image = surface.current_image;
+
+        let res = unsafe {
+            self.device.acquire_next_image_khr(
+                surface.swapchain,
+                0,
+                surface.image_acquired_semaphores[surface.current_image as usize],
+                vk::Fence::null(),
+            )
+        };
+
+        if let Some(next_image) = res.value {
+            surface.current_image = next_image;
+        }
+
+        match res.raw {
+            vk::Result::SUBOPTIMAL_KHR | vk::Result::ERROR_OUT_OF_DATE_KHR => Ok(true),
+            _ => Err(VulkanError::APIError(res.raw)),
+        }
     }
 
     pub fn present(&self, context: &dyn HasBaseContext, surface: &Surface) -> VulkanResult<bool> {
@@ -202,5 +239,30 @@ impl<'a> Device<'a> {
             Ok(_) => Ok(outdated),
             Err(code) => Err(VulkanError::APIError(code)),
         }
+    }
+
+    pub fn set_vk_name(
+        &self,
+        raw_handle: u64,
+        object_type: vk::ObjectType,
+        name: &str,
+    ) -> VulkanResult<()> {
+        let name = CString::new(name).unwrap();
+        let name_info = vk::DebugUtilsObjectNameInfoEXTBuilder::new()
+            .object_handle(raw_handle)
+            .object_name(&name)
+            .object_type(object_type);
+
+        unsafe {
+            self.device
+                .set_debug_utils_object_name_ext(&name_info)
+                .result()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn wait_idle(&self) -> VulkanResult<()> {
+        Ok(unsafe { self.device.device_wait_idle().result()? })
     }
 }
