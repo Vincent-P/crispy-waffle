@@ -10,7 +10,7 @@ use erupt::vk;
 use raw_window_handle::HasRawWindowHandle;
 use std::ffi::{CStr, CString};
 
-const MAX_SWAPCHAIN_IMAGES: usize = 6;
+pub const MAX_SWAPCHAIN_IMAGES: usize = 6;
 
 type PerImage<T> = ArrayVec<T, MAX_SWAPCHAIN_IMAGES>;
 

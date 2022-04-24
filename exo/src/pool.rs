@@ -25,6 +25,27 @@ impl<T> Clone for Handle<T> {
 }
 impl<T> Copy for Handle<T> {}
 
+impl<T> PartialEq for Handle<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index && self.generation == other.generation
+    }
+}
+impl<T> Eq for Handle<T> {}
+
+impl<T> Handle<T> {
+    pub fn invalid() -> Self {
+        Handle {
+            index: !0u32,
+            generation: !0u32,
+            marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        return *self != Self::invalid();
+    }
+}
+
 pub struct Pool<T> {
     values: Vec<(Metadata, Entry<T>)>,
     freelist_head: Option<u32>,
@@ -96,6 +117,7 @@ impl<T> Pool<T> {
     }
 
     pub fn get_mut(&mut self, handle: Handle<T>) -> &mut T {
+        assert!(handle.is_valid());
         let (metadata, element) = &mut self.values[handle.index as usize];
         assert!(metadata.get_is_occupied());
         assert!(handle.generation == metadata.get_generation());
@@ -103,6 +125,7 @@ impl<T> Pool<T> {
     }
 
     pub fn get(&self, handle: Handle<T>) -> &T {
+        assert!(handle.is_valid());
         let (metadata, element) = &self.values[handle.index as usize];
         assert!(metadata.get_is_occupied());
         assert!(handle.generation == metadata.get_generation());
@@ -110,6 +133,7 @@ impl<T> Pool<T> {
     }
 
     pub fn remove(&mut self, handle: Handle<T>) {
+        assert!(handle.is_valid());
         let (metadata, element) = &mut self.values[handle.index as usize];
         assert!(metadata.get_is_occupied());
         assert!(handle.generation == metadata.get_generation());

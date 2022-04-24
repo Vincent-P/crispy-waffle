@@ -1,5 +1,7 @@
 use anyhow::Result;
+use arrayvec::ArrayVec;
 use erupt::vk;
+use exo::pool::Handle;
 use std::{ffi::CStr, os::raw::c_char};
 use winit::{
     event::{Event, WindowEvent},
@@ -8,7 +10,10 @@ use winit::{
     window::WindowBuilder,
 };
 
-use crate::vulkan::{contexts::TransferContextMethods, error::VulkanResult};
+use crate::vulkan::{
+    contexts::{GraphicsContextMethods, TransferContextMethods},
+    error::VulkanResult,
+};
 
 mod vulkan;
 
@@ -64,6 +69,19 @@ fn main() -> Result<()> {
     let mut i_frame: usize = 0;
     let fence = device.create_fence()?;
 
+    let mut framebuffers =
+        ArrayVec::<Handle<vulkan::Framebuffer>, { vulkan::MAX_SWAPCHAIN_IMAGES }>::new();
+    for i_image in 0..surface.images.len() {
+        framebuffers.push(device.create_framebuffer(
+            &vulkan::FramebufferFormat {
+                size: [surface.size[0], surface.size[1], 1],
+                ..Default::default()
+            },
+            &[surface.images[i_image]],
+            Handle::<vulkan::Image>::invalid(),
+        )?);
+    }
+
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
@@ -81,14 +99,29 @@ fn main() -> Result<()> {
             device.reset_context_pool(context_pool)?;
             let outdated = device.acquire_next_swapchain(&mut surface);
 
+            let framebuffer = framebuffers[surface.current_image as usize];
             let mut ctx = device.get_graphics_context(context_pool)?;
-            ctx.begin()?;
+            ctx.begin(&device)?;
             ctx.wait_for_acquired(&surface, vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT);
             ctx.barrier(
+                &mut device,
+                surface.images[surface.current_image as usize],
+                vulkan::ImageState::ColorAttachment,
+            );
+            ctx.begin_pass(
+                &mut device,
+                framebuffer,
+                &[vulkan::LoadOp::ClearColor(
+                    vulkan::ClearColorValue::Float32([1.0, 0.0, 1.0, 1.0]),
+                )],
+            )?;
+            ctx.end_pass(&device);
+            ctx.barrier(
+                &mut device,
                 surface.images[surface.current_image as usize],
                 vulkan::ImageState::Present,
             );
-            ctx.end()?;
+            ctx.end(&device)?;
             ctx.prepare_present(&surface);
             device.submit(&ctx, &[&fence], &[(i_frame as u64) + 1])?;
             let outdated = device.present(&ctx, &surface)?;
@@ -114,6 +147,11 @@ fn main() -> Result<()> {
     });
 
     device.wait_idle()?;
+
+    for framebuffer in framebuffers {
+        device.destroy_framebuffer(framebuffer);
+    }
+
     device.destroy_fence(fence);
     for context_pool in context_pools {
         device.destroy_context_pool(context_pool);

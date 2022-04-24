@@ -2,6 +2,7 @@ use super::context_pool::*;
 use super::device::*;
 use super::error::*;
 use super::fence::*;
+use super::framebuffer::*;
 use super::image::*;
 use super::queues;
 use super::surface::*;
@@ -13,8 +14,7 @@ use erupt::vk;
 
 pub const MAX_SEMAPHORES: usize = 4;
 
-pub struct BaseContext<'a> {
-    pub device: &'a Device<'a>,
+pub struct BaseContext {
     pub cmd: vk::CommandBuffer,
     pub wait_fence_list: ArrayVec<Fence, MAX_SEMAPHORES>,
     pub wait_value_list: ArrayVec<u64, MAX_SEMAPHORES>,
@@ -26,16 +26,16 @@ pub struct BaseContext<'a> {
     pub can_present_semaphore: Option<vk::Semaphore>,
 }
 
-pub struct TransferContext<'a> {
-    base: BaseContext<'a>,
+pub struct TransferContext {
+    base: BaseContext,
 }
 
-pub struct ComputeContext<'a> {
-    base: BaseContext<'a>,
+pub struct ComputeContext {
+    base: BaseContext,
 }
 
-pub struct GraphicsContext<'a> {
-    base: BaseContext<'a>,
+pub struct GraphicsContext {
+    base: BaseContext,
 }
 
 impl<'a> Device<'a> {
@@ -80,7 +80,6 @@ impl<'a> Device<'a> {
         let queue = unsafe { self.device.get_device_queue(queue_family_idx, 0) };
 
         Ok(BaseContext {
-            device: self,
             cmd,
             wait_fence_list: Default::default(),
             wait_value_list: Default::default(),
@@ -126,13 +125,13 @@ pub trait HasBaseContext {
 }
 
 pub trait TransferContextMethods: HasBaseContext {
-    fn begin(&self) -> VulkanResult<()> {
+    fn begin(&self, device: &Device) -> VulkanResult<()> {
         let base_context = self.base_context();
-        let device = &base_context.device.device;
 
         let begin_info = vk::CommandBufferBeginInfoBuilder::new();
         unsafe {
             device
+                .device
                 .begin_command_buffer(base_context.cmd, &begin_info)
                 .result()?;
         }
@@ -140,12 +139,14 @@ pub trait TransferContextMethods: HasBaseContext {
         Ok(())
     }
 
-    fn end(&self) -> VulkanResult<()> {
+    fn end(&self, device: &Device) -> VulkanResult<()> {
         let base_context = self.base_context();
-        let device = &base_context.device.device;
 
         unsafe {
-            device.end_command_buffer(base_context.cmd).result()?;
+            device
+                .device
+                .end_command_buffer(base_context.cmd)
+                .result()?;
         }
         Ok(())
     }
@@ -163,13 +164,14 @@ pub trait TransferContextMethods: HasBaseContext {
             Some(surface.can_present_semaphores[surface.current_image as usize]);
     }
 
-    fn barrier(&self, image_handle: Handle<Image>, state_dst: ImageState) {
+    fn barrier(&self, device: &mut Device, image_handle: Handle<Image>, state_dst: ImageState) {
         let base_context = self.base_context();
-        let device = &base_context.device.device;
-        let image = base_context.device.images.get(image_handle);
+        let image = device.images.get_mut(image_handle);
 
         let src_access = image.state.get_src_access();
         let dst_access = state_dst.get_dst_access();
+
+        image.state = state_dst;
 
         const QUEUE_FAMILY_IGNORED: u32 = !0u32;
         let barrier = vk::ImageMemoryBarrierBuilder::new()
@@ -183,7 +185,7 @@ pub trait TransferContextMethods: HasBaseContext {
             .subresource_range(image.full_view.range);
 
         unsafe {
-            device.cmd_pipeline_barrier(
+            device.device.cmd_pipeline_barrier(
                 base_context.cmd,
                 src_access.stage,
                 dst_access.stage,
@@ -195,47 +197,89 @@ pub trait TransferContextMethods: HasBaseContext {
         }
     }
 }
-// clear_barrier
-// begin_pass
-// end_pass
-// barrier
 
 pub trait ComputeContextMethods: TransferContextMethods {}
-pub trait GraphicsContextMethods: ComputeContextMethods {}
+pub trait GraphicsContextMethods: ComputeContextMethods {
+    fn begin_pass(
+        &mut self,
+        device: &mut Device,
+        framebuffer_handle: Handle<Framebuffer>,
+        load_ops: &[LoadOp],
+    ) -> VulkanResult<()> {
+        let base_context = self.base_context_mut();
+
+        let (framebuffer, renderpass) =
+            device.find_framebuffer_renderpass(framebuffer_handle, load_ops)?;
+
+        let mut clear_values = ArrayVec::<vk::ClearValue, MAX_ATTACHMENTS>::new();
+        for load_op in load_ops {
+            clear_values.push(load_op.clear_value());
+        }
+
+        let begin_info = vk::RenderPassBeginInfoBuilder::new()
+            .render_pass(renderpass.vkhandle)
+            .framebuffer(framebuffer.vkhandle)
+            .render_area(vk::Rect2D {
+                extent: vk::Extent2D {
+                    width: framebuffer.format.size[0] as u32,
+                    height: framebuffer.format.size[1] as u32,
+                },
+                ..Default::default()
+            })
+            .clear_values(&clear_values);
+
+        unsafe {
+            device.device.cmd_begin_render_pass(
+                base_context.cmd,
+                &begin_info,
+                vk::SubpassContents::INLINE,
+            );
+        }
+
+        Ok(())
+    }
+
+    fn end_pass(&self, device: &Device) {
+        let base_context = self.base_context();
+	unsafe {
+	    device.device.cmd_end_render_pass(base_context.cmd);
+	}
+    }
+}
 
 impl<T: ComputeContextMethods> TransferContextMethods for T {}
 impl<T: GraphicsContextMethods> ComputeContextMethods for T {}
 
-impl<'a> HasBaseContext for TransferContext<'a> {
+impl HasBaseContext for TransferContext {
     fn base_context(&self) -> &BaseContext {
         &self.base
     }
 
-    fn base_context_mut(&mut self) -> &'a mut BaseContext {
+    fn base_context_mut(&mut self) -> &mut BaseContext {
         &mut self.base
     }
 }
 
-impl<'a> HasBaseContext for ComputeContext<'a> {
-    fn base_context(&self) -> &'a BaseContext {
+impl HasBaseContext for ComputeContext {
+    fn base_context(&self) -> &BaseContext {
         &self.base
     }
 
-    fn base_context_mut(&mut self) -> &'a mut BaseContext {
+    fn base_context_mut(&mut self) -> &mut BaseContext {
         &mut self.base
     }
 }
 
-impl<'a> HasBaseContext for GraphicsContext<'a> {
-    fn base_context(&self) -> &'a BaseContext {
+impl HasBaseContext for GraphicsContext {
+    fn base_context(&self) -> &BaseContext {
         &self.base
     }
 
-    fn base_context_mut(&mut self) -> &'a mut BaseContext {
+    fn base_context_mut(&mut self) -> &mut BaseContext {
         &mut self.base
     }
 }
 
-impl<'a> TransferContextMethods for TransferContext<'a> {}
-impl<'a> ComputeContextMethods for ComputeContext<'a> {}
-impl<'a> GraphicsContextMethods for GraphicsContext<'a> {}
+impl TransferContextMethods for TransferContext {}
+impl ComputeContextMethods for ComputeContext {}
+impl GraphicsContextMethods for GraphicsContext {}

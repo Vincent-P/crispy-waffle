@@ -1,6 +1,7 @@
 use super::contexts::*;
 use super::error::*;
 use super::fence::*;
+use super::framebuffer::*;
 use super::image::*;
 use super::instance::*;
 use super::physical_device::*;
@@ -29,6 +30,7 @@ pub struct Device<'a> {
     pub compute_family_idx: u32,
     pub transfer_family_idx: u32,
     pub images: Pool<Image>,
+    pub framebuffers: Pool<Framebuffer>,
 }
 
 impl<'a> Device<'a> {
@@ -128,6 +130,7 @@ impl<'a> Device<'a> {
             compute_family_idx,
             transfer_family_idx,
             images: Pool::new(),
+            framebuffers: Pool::new(),
         })
     }
 
