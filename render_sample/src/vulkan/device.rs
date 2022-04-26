@@ -216,8 +216,9 @@ impl<'a> Device<'a> {
         }
 
         match res.raw {
+            vk::Result::SUCCESS => Ok(false),
             vk::Result::SUBOPTIMAL_KHR | vk::Result::ERROR_OUT_OF_DATE_KHR => Ok(true),
-            _ => Err(VulkanError::APIError(res.raw)),
+            _ => Err(VulkanError::from(res.raw)),
         }
     }
 
@@ -240,7 +241,7 @@ impl<'a> Device<'a> {
 
         match res.result() {
             Ok(_) => Ok(outdated),
-            Err(code) => Err(VulkanError::APIError(code)),
+            Err(code) => Err(VulkanError::from(code)),
         }
     }
 

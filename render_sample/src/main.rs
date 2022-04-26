@@ -97,7 +97,24 @@ fn main() -> Result<()> {
             device.wait_for_fences(&[&fence], &[wait_value])?;
 
             device.reset_context_pool(context_pool)?;
-            let outdated = device.acquire_next_swapchain(&mut surface);
+            let outdated = device.acquire_next_swapchain(&mut surface)?;
+            if outdated {
+                device.wait_idle();
+                surface.recreate_swapchain(&instance, &mut device)?;
+
+                for i_image in 0..surface.images.len() {
+                    device.destroy_framebuffer(framebuffers[i_image]);
+                    framebuffers[i_image] = device.create_framebuffer(
+                        &vulkan::FramebufferFormat {
+                            size: [surface.size[0], surface.size[1], 1],
+                            ..Default::default()
+                        },
+                        &[surface.images[i_image]],
+                        Handle::<vulkan::Image>::invalid(),
+                    )?;
+                }
+                return Ok(());
+            }
 
             let framebuffer = framebuffers[surface.current_image as usize];
             let mut ctx = device.get_graphics_context(context_pool)?;
@@ -137,7 +154,8 @@ fn main() -> Result<()> {
             } if window_id == window.id() => *control_flow = ControlFlow::Exit,
 
             Event::RedrawEventsCleared => {
-                if let Err(_) = draw() {
+                if let Err(e) = draw() {
+                    eprintln!("Error occured: {:?}", e);
                     *control_flow = ControlFlow::Exit;
                 }
             }

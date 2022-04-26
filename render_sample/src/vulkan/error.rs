@@ -29,6 +29,7 @@ pub enum VulkanError {
 
 impl From<vk::Result> for VulkanError {
     fn from(error: vk::Result) -> Self {
+        assert!(error != vk::Result::SUCCESS);
         Self::APIError(error)
     }
 }

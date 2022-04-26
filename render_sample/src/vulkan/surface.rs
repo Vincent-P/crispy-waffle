@@ -224,7 +224,7 @@ impl Surface {
         Ok(())
     }
 
-    pub fn destroy_swapchain(&mut self, device: &mut Device) {
+    fn destroy_swapchain(&mut self, device: &mut Device) {
         for &image in &self.images {
             device.destroy_image(image);
         }
@@ -244,5 +244,16 @@ impl Surface {
 
         unsafe { device.device.destroy_swapchain_khr(self.swapchain, None) }
         self.swapchain = vk::SwapchainKHR::null();
+        self.image_acquired_semaphores.clear();
+        self.can_present_semaphores.clear();
+    }
+
+    pub fn recreate_swapchain(
+        &mut self,
+        instance: &Instance,
+        device: &mut Device,
+    ) -> VulkanResult<()> {
+        self.destroy_swapchain(device);
+        self.create_swapchain(instance, device)
     }
 }
