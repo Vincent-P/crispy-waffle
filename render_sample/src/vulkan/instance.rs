@@ -1,7 +1,7 @@
 use super::error::*;
 use super::physical_device::*;
 use arrayvec::ArrayVec;
-use erupt::{cstr, vk, EntryLoader, ExtendableFrom, InstanceLoader};
+use erupt::{cstr, vk, EntryLoader, InstanceLoader};
 use std::{
     ffi::{c_void, CStr},
     os::raw::c_char,

@@ -132,12 +132,8 @@ impl Device<'_> {
             render_passes: ArrayVec::new(),
         };
 
-        let attachment_count = color_attachments.len()
-            + if depth_attachment.is_valid() {
-                1
-            } else {
-                0
-            };
+        let attachment_count =
+            color_attachments.len() + if depth_attachment.is_valid() { 1 } else { 0 };
 
         let mut attachment_views = ArrayVec::<vk::ImageView, MAX_ATTACHMENTS>::new();
         for attachment in color_attachments {
@@ -231,17 +227,17 @@ impl Device<'_> {
 // --
 
 impl ClearColorValue {
-    pub fn to_vk(&self) -> vk::ClearColorValue {
+    pub fn to_vk(self) -> vk::ClearColorValue {
         match self {
-            ClearColorValue::Float32(values) => vk::ClearColorValue { float32: *values },
-            ClearColorValue::Int32(values) => vk::ClearColorValue { int32: *values },
-            ClearColorValue::Uint32(values) => vk::ClearColorValue { uint32: *values },
+            ClearColorValue::Float32(values) => vk::ClearColorValue { float32: values },
+            ClearColorValue::Int32(values) => vk::ClearColorValue { int32: values },
+            ClearColorValue::Uint32(values) => vk::ClearColorValue { uint32: values },
         }
     }
 }
 
 impl ClearDepthValue {
-    pub fn to_vk(&self) -> vk::ClearDepthStencilValue {
+    pub fn to_vk(self) -> vk::ClearDepthStencilValue {
         vk::ClearDepthStencilValue {
             depth: self.depth,
             stencil: self.stencil,
@@ -250,7 +246,7 @@ impl ClearDepthValue {
 }
 
 impl LoadOp {
-    pub fn to_vk(&self) -> vk::AttachmentLoadOp {
+    pub fn to_vk(self) -> vk::AttachmentLoadOp {
         match self {
             LoadOp::Load => vk::AttachmentLoadOp::LOAD,
             LoadOp::ClearDepth(_) | LoadOp::ClearColor(_) => vk::AttachmentLoadOp::CLEAR,

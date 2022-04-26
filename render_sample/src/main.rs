@@ -99,7 +99,7 @@ fn main() -> Result<()> {
             device.reset_context_pool(context_pool)?;
             let outdated = device.acquire_next_swapchain(&mut surface)?;
             if outdated {
-                device.wait_idle();
+                device.wait_idle()?;
                 surface.recreate_swapchain(&instance, &mut device)?;
 
                 for i_image in 0..surface.images.len() {

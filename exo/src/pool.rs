@@ -42,7 +42,7 @@ impl<T> Handle<T> {
     }
 
     pub fn is_valid(&self) -> bool {
-        return *self != Self::invalid();
+        *self != Self::invalid()
     }
 }
 

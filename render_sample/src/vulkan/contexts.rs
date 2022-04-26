@@ -47,7 +47,7 @@ impl<'a> Device<'a> {
         assert!(i_queue < queues::COUNT);
         let i_cmd = context_pool.command_buffers_is_used[i_queue]
             .iter()
-            .position(|is_used| *is_used == false);
+            .position(|is_used| !(*is_used));
 
         let cmd = if let Some(i_cmd) = i_cmd {
             context_pool.command_buffers_is_used[i_queue][i_cmd] = true;
@@ -241,9 +241,9 @@ pub trait GraphicsContextMethods: ComputeContextMethods {
 
     fn end_pass(&self, device: &Device) {
         let base_context = self.base_context();
-	unsafe {
-	    device.device.cmd_end_render_pass(base_context.cmd);
-	}
+        unsafe {
+            device.device.cmd_end_render_pass(base_context.cmd);
+        }
     }
 }
 

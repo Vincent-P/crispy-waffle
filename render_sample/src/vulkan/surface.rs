@@ -8,7 +8,6 @@ use exo::pool::Handle;
 use arrayvec::ArrayVec;
 use erupt::vk;
 use raw_window_handle::HasRawWindowHandle;
-use std::ffi::{CStr, CString};
 
 pub const MAX_SWAPCHAIN_IMAGES: usize = 6;
 

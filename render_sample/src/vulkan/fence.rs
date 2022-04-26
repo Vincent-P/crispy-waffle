@@ -1,5 +1,5 @@
 use arrayvec::ArrayVec;
-use erupt::{vk, DeviceLoader, ExtendableFrom};
+use erupt::{vk, ExtendableFrom};
 
 use super::device::*;
 use super::error::*;
@@ -54,10 +54,10 @@ impl Device<'_> {
         let timeout: u64 = 10 * 1000 * 1000 * 1000;
         let wait_info = vk::SemaphoreWaitInfoBuilder::new()
             .semaphores(&semaphores)
-            .values(&wait_values);
+            .values(wait_values);
 
         unsafe {
-            self.device.wait_semaphores(&wait_info, timeout);
+            self.device.wait_semaphores(&wait_info, timeout).result()?;
         }
 
         Ok(())

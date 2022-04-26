@@ -99,7 +99,7 @@ impl<'a> Device<'a> {
 
             let mut base_struct = &device_info as *const _ as *const vk::BaseInStructure;
             loop {
-                if base_struct == std::ptr::null() {
+                if base_struct.is_null() {
                     break;
                 }
 
@@ -267,6 +267,7 @@ impl<'a> Device<'a> {
     }
 
     pub fn wait_idle(&self) -> VulkanResult<()> {
-        Ok(unsafe { self.device.device_wait_idle().result()? })
+        unsafe { self.device.device_wait_idle().result()? }
+        Ok(())
     }
 }
