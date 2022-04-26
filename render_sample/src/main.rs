@@ -1,6 +1,4 @@
 use anyhow::Result;
-use arrayvec::ArrayVec;
-use erupt::vk;
 use exo::pool::Handle;
 use std::{ffi::CStr, os::raw::c_char};
 use winit::{
@@ -10,12 +8,14 @@ use winit::{
     window::WindowBuilder,
 };
 
-use crate::vulkan::{
-    contexts::{GraphicsContextMethods, TransferContextMethods},
-    error::VulkanResult,
+use render::{
+    arrayvec::ArrayVec,
+    vk, vulkan,
+    vulkan::{
+        contexts::{GraphicsContextMethods, TransferContextMethods},
+        error::VulkanResult,
+    },
 };
-
-mod vulkan;
 
 const FRAME_QUEUE_LENGTH: usize = 2;
 
@@ -97,8 +97,8 @@ fn main() -> Result<()> {
             device.wait_for_fences(&[&fence], &[wait_value])?;
 
             device.reset_context_pool(context_pool)?;
-            let outdated = device.acquire_next_swapchain(&mut surface)?;
-            if outdated {
+            let mut outdated = device.acquire_next_swapchain(&mut surface)?;
+            while outdated {
                 device.wait_idle()?;
                 surface.recreate_swapchain(&instance, &mut device)?;
 
@@ -113,7 +113,7 @@ fn main() -> Result<()> {
                         Handle::<vulkan::Image>::invalid(),
                     )?;
                 }
-                return Ok(());
+                outdated = device.acquire_next_swapchain(&mut surface)?;
             }
 
             let framebuffer = framebuffers[surface.current_image as usize];
@@ -153,7 +153,7 @@ fn main() -> Result<()> {
                 window_id,
             } if window_id == window.id() => *control_flow = ControlFlow::Exit,
 
-            Event::RedrawEventsCleared => {
+            Event::RedrawRequested(window_id) if window_id == window.id() => {
                 if let Err(e) = draw() {
                     eprintln!("Error occured: {:?}", e);
                     *control_flow = ControlFlow::Exit;

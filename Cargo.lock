@@ -662,10 +662,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "render_sample"
+name = "render"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "arrayvec",
  "erupt",
  "exo",
@@ -673,6 +672,15 @@ dependencies = [
  "gpu-alloc-erupt",
  "raw-window-handle",
  "thiserror",
+]
+
+[[package]]
+name = "render_sample"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "exo",
+ "render",
  "winit",
 ]
 

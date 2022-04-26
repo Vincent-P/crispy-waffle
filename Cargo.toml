@@ -2,4 +2,5 @@
 members = [
     "exo",
     "render_sample",
+    "render",
 ]

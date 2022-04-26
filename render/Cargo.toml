@@ -1,5 +1,5 @@
 [package]
-name = "render_sample"
+name = "render"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,6 +7,9 @@ edition = "2021"
 
 [dependencies]
 exo = {path= "../exo"}
-render = {path= "../render"}
-winit = "0.26.1"
-anyhow = "1.0"
+gpu-alloc = "0.5.3"
+gpu-alloc-erupt = "0.7.0"
+erupt = "0.22.0"
+raw-window-handle = "0.4.2"
+thiserror = "1.0"
+arrayvec = "0.7.2"
