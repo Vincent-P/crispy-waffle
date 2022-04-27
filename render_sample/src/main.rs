@@ -1,6 +1,6 @@
 use anyhow::Result;
 use exo::pool::Handle;
-use std::{ffi::CStr, os::raw::c_char};
+use std::{ffi::CStr, os::raw::c_char, path::PathBuf};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -20,6 +20,12 @@ use render::{
 const FRAME_QUEUE_LENGTH: usize = 2;
 
 fn main() -> Result<()> {
+    let mut path = PathBuf::from(env!("OUT_DIR"));
+    path.push("base");
+    path.set_extension("vert.spv");
+
+    println!("shader path: {:?}", &path);
+
     let mut event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
