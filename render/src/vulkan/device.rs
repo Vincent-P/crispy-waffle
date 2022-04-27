@@ -236,12 +236,10 @@ impl<'a> Device<'a> {
 
         let res = unsafe { self.device.queue_present_khr(context.queue, &present_info) };
 
-        let outdated =
-            res.raw == vk::Result::SUBOPTIMAL_KHR || res.raw == vk::Result::ERROR_OUT_OF_DATE_KHR;
-
-        match res.result() {
-            Ok(_) => Ok(outdated),
-            Err(code) => Err(VulkanError::from(code)),
+        match res.raw {
+            vk::Result::SUCCESS => Ok(false),
+            vk::Result::SUBOPTIMAL_KHR | vk::Result::ERROR_OUT_OF_DATE_KHR => Ok(true),
+            _ => Err(VulkanError::from(res.raw)),
         }
     }
 

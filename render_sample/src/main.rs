@@ -141,8 +141,8 @@ fn main() -> Result<()> {
             ctx.end(&device)?;
             ctx.prepare_present(&surface);
             device.submit(&ctx, &[&fence], &[(i_frame as u64) + 1])?;
-            let outdated = device.present(&ctx, &surface)?;
             i_frame += 1;
+            let outdated = device.present(&ctx, &surface)?;
 
             Ok(())
         };
@@ -152,6 +152,17 @@ fn main() -> Result<()> {
                 event: WindowEvent::CloseRequested,
                 window_id,
             } if window_id == window.id() => *control_flow = ControlFlow::Exit,
+
+            Event::MainEventsCleared => {
+                // Application update code.
+
+                // Queue a RedrawRequested event.
+                //
+                // You only need to call this if you've determined that you need to redraw, in
+                // applications which do not always need to. Applications that redraw continuously
+                // can just render here instead.
+                window.request_redraw();
+            }
 
             Event::RedrawRequested(window_id) if window_id == window.id() => {
                 if let Err(e) = draw() {
