@@ -2,9 +2,11 @@ use super::contexts::*;
 use super::error::*;
 use super::fence::*;
 use super::framebuffer::*;
+use super::graphics_pipeline::*;
 use super::image::*;
 use super::instance::*;
 use super::physical_device::*;
+use super::shader::*;
 use super::surface::*;
 
 use exo::pool::Pool;
@@ -31,6 +33,8 @@ pub struct Device<'a> {
     pub transfer_family_idx: u32,
     pub images: Pool<Image>,
     pub framebuffers: Pool<Framebuffer>,
+    pub shaders: Pool<Shader>,
+    pub graphics_programs: Pool<GraphicsProgram>,
 }
 
 impl<'a> Device<'a> {
@@ -131,6 +135,8 @@ impl<'a> Device<'a> {
             transfer_family_idx,
             images: Pool::new(),
             framebuffers: Pool::new(),
+            shaders: Pool::new(),
+            graphics_programs: Pool::new(),
         })
     }
 

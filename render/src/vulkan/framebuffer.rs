@@ -61,7 +61,7 @@ pub struct Renderpass {
     pub load_ops: ArrayVec<LoadOp, MAX_ATTACHMENTS>,
 }
 
-fn create_renderpass(
+pub fn create_renderpass(
     device: &DeviceLoader,
     format: &FramebufferFormat,
     load_ops: &[LoadOp],

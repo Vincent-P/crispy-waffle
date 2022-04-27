@@ -20,11 +20,7 @@ use render::{
 const FRAME_QUEUE_LENGTH: usize = 2;
 
 fn main() -> Result<()> {
-    let mut path = PathBuf::from(env!("OUT_DIR"));
-    path.push("base");
-    path.set_extension("vert.spv");
-
-    println!("shader path: {:?}", &path);
+    let shader_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
 
     let mut event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
@@ -69,6 +65,24 @@ fn main() -> Result<()> {
     )?;
 
     let mut surface = vulkan::Surface::new(&instance, &mut device, &window)?;
+
+    let base_gfx_state = vulkan::GraphicsState {
+        vertex_shader: device
+            .create_shader(shader_dir.with_file_name("base.vert.spv"))
+            .unwrap(),
+        fragment_shader: device
+            .create_shader(shader_dir.with_file_name("base.frag.spv"))
+            .unwrap(),
+        attachments_format: vulkan::FramebufferFormat {
+            attachment_formats: {
+                let mut formats = ArrayVec::new();
+                formats.push(surface.format.format);
+                formats
+            },
+            ..Default::default()
+        },
+    };
+
     let mut context_pools: [vulkan::ContextPool; FRAME_QUEUE_LENGTH] =
         [device.create_context_pool()?, device.create_context_pool()?];
 
@@ -193,6 +207,10 @@ fn main() -> Result<()> {
     }
 
     surface.destroy(&instance, &mut device);
+
+    device.destroy_shader(base_vertex);
+    device.destroy_shader(base_frag);
+
     device.destroy();
     instance.destroy();
     Ok(())
