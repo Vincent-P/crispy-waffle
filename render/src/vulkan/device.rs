@@ -1,3 +1,4 @@
+use super::buffer::*;
 use super::contexts::*;
 use super::error::*;
 use super::fence::*;
@@ -32,6 +33,7 @@ pub struct Device<'a> {
     pub compute_family_idx: u32,
     pub transfer_family_idx: u32,
     pub images: Pool<Image>,
+    pub buffers: Pool<Buffer>,
     pub framebuffers: Pool<Framebuffer>,
     pub shaders: Pool<Shader>,
     pub graphics_programs: Pool<GraphicsProgram>,
@@ -134,6 +136,7 @@ impl<'a> Device<'a> {
             compute_family_idx,
             transfer_family_idx,
             images: Pool::new(),
+            buffers: Pool::new(),
             framebuffers: Pool::new(),
             shaders: Pool::new(),
             graphics_programs: Pool::new(),

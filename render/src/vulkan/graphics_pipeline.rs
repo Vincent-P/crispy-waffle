@@ -7,6 +7,7 @@ use exo::pool::Handle;
 
 use arrayvec::ArrayVec;
 use erupt::vk;
+use std::ffi::CString;
 
 pub const MAX_RENDER_STATES: usize = 4;
 
@@ -101,7 +102,7 @@ impl Device<'_> {
         program_handle: Handle<GraphicsProgram>,
         render_state: RenderState,
     ) -> VulkanResult<usize> {
-        let mut program = self.graphics_programs.get_mut(program_handle);
+        let program = self.graphics_programs.get_mut(program_handle);
 
         let mut dynamic_states = ArrayVec::<vk::DynamicState, 4>::new();
         dynamic_states.push(vk::DynamicState::VIEWPORT);
@@ -191,13 +192,16 @@ impl Device<'_> {
         let multisample_info = vk::PipelineMultisampleStateCreateInfoBuilder::new()
             .rasterization_samples(vk::SampleCountFlagBits::_1);
 
+        let entrypoint = CString::new("main").unwrap();
+        let module_name = &entrypoint;
         let mut shader_stages = ArrayVec::<vk::PipelineShaderStageCreateInfoBuilder, 3>::new();
 
         if program.graphics_state.vertex_shader.is_valid() {
             let shader = self.shaders.get(program.graphics_state.vertex_shader);
             let shader_info = vk::PipelineShaderStageCreateInfoBuilder::new()
                 .stage(vk::ShaderStageFlagBits::VERTEX)
-                .module(shader.vkhandle);
+                .module(shader.vkhandle)
+                .name(module_name);
             shader_stages.push(shader_info);
         }
 
@@ -205,12 +209,21 @@ impl Device<'_> {
             let shader = self.shaders.get(program.graphics_state.fragment_shader);
             let shader_info = vk::PipelineShaderStageCreateInfoBuilder::new()
                 .stage(vk::ShaderStageFlagBits::FRAGMENT)
-                .module(shader.vkhandle);
+                .module(shader.vkhandle)
+                .name(module_name);
             shader_stages.push(shader_info);
         }
 
+
+        let layout_info = vk::PipelineLayoutCreateInfoBuilder::new();
+        let dummy_layout = unsafe {
+            self.device
+                .create_pipeline_layout(&layout_info, None)
+                .result()?
+        };
+
         let pipeline_info = vk::GraphicsPipelineCreateInfoBuilder::new()
-            // .layout()
+            .layout(dummy_layout)
             .vertex_input_state(&vertex_input_info)
             .input_assembly_state(&input_assembly_info)
             .rasterization_state(&rasterization_info)
@@ -240,8 +253,8 @@ impl Device<'_> {
 impl PrimitiveTopology {
     pub fn to_vk(self) -> vk::PrimitiveTopology {
         match self {
-            TriangleList => vk::PrimitiveTopology::TRIANGLE_LIST,
-            PointList => vk::PrimitiveTopology::POINT_LIST,
+            PrimitiveTopology::TriangleList => vk::PrimitiveTopology::TRIANGLE_LIST,
+            PrimitiveTopology::PointList => vk::PrimitiveTopology::POINT_LIST,
         }
     }
 }

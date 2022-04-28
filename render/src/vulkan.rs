@@ -1,4 +1,6 @@
 pub mod context_pool;
+pub mod buffer;
+pub mod descriptor_set;
 pub mod contexts;
 pub mod device;
 pub mod error;
@@ -23,3 +25,5 @@ pub use instance::*;
 pub use physical_device::*;
 pub use shader::*;
 pub use surface::*;
+pub use descriptor_set::*;
+pub use buffer::*;

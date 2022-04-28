@@ -12,5 +12,8 @@ const vec4 positions[] = {
 
 void main()
 {
-    gl_Position = positions[gl_VertexIndex%6];
+    vec4 pos = positions[gl_VertexIndex%6];
+    pos.xy = pos.xy * 2.0 - 1.0;
+    pos.xy *= 0.5;
+    gl_Position = pos;
 }

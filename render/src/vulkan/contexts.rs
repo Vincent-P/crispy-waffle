@@ -3,6 +3,7 @@ use super::device::*;
 use super::error::*;
 use super::fence::*;
 use super::framebuffer::*;
+use super::graphics_pipeline::*;
 use super::image::*;
 use super::queues;
 use super::surface::*;
@@ -24,6 +25,24 @@ pub struct BaseContext {
     pub image_acquired_semaphore: Option<vk::Semaphore>,
     pub image_acquired_stage: Option<vk::PipelineStageFlags>,
     pub can_present_semaphore: Option<vk::Semaphore>,
+}
+
+pub struct DrawOptions {
+    pub vertex_count: u32,
+    pub instance_count: u32,
+    pub vertex_offset: u32,
+    pub instance_offset: u32,
+}
+
+impl Default for DrawOptions {
+    fn default() -> Self {
+        Self {
+            vertex_count: 0,
+            instance_count: 1,
+            vertex_offset: 0,
+            instance_offset: 0,
+        }
+    }
 }
 
 pub struct TransferContext {
@@ -243,6 +262,56 @@ pub trait GraphicsContextMethods: ComputeContextMethods {
         let base_context = self.base_context();
         unsafe {
             device.device.cmd_end_render_pass(base_context.cmd);
+        }
+    }
+
+    fn bind_graphics_pipeline(
+        &self,
+        device: &Device,
+        program_handle: Handle<GraphicsProgram>,
+        index: usize,
+    ) {
+        let base_context = self.base_context();
+        let program = device.graphics_programs.get(program_handle);
+        let pipeline = program.pipelines[index];
+        unsafe {
+            device.device.cmd_bind_pipeline(
+                base_context.cmd,
+                vk::PipelineBindPoint::GRAPHICS,
+                pipeline,
+            );
+        }
+    }
+
+    fn set_viewport(&self, device: &Device, viewport: vk::ViewportBuilder) {
+        let base_context = self.base_context();
+        let viewports = [viewport];
+        unsafe {
+            device
+                .device
+                .cmd_set_viewport(base_context.cmd, 0, &viewports);
+        }
+    }
+
+    fn set_scissor(&self, device: &Device, scissor: vk::Rect2DBuilder) {
+        let base_context = self.base_context();
+        let scissors = [scissor];
+        unsafe {
+            device
+                .device
+                .cmd_set_scissor(base_context.cmd, 0, &scissors);
+        }
+    }
+    fn draw(&self, device: &Device, draw_options: DrawOptions) {
+        let base_context = self.base_context();
+        unsafe {
+            device.device.cmd_draw(
+                base_context.cmd,
+                draw_options.vertex_count,
+                draw_options.instance_count,
+                draw_options.vertex_offset,
+                draw_options.instance_offset,
+            );
         }
     }
 }

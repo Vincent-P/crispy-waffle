@@ -20,7 +20,9 @@ use render::{
 const FRAME_QUEUE_LENGTH: usize = 2;
 
 fn main() -> Result<()> {
-    let shader_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
+    let mut shader_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
+    shader_dir.push("dummy_file");
+    println!("Shaders directory: {:?}", &shader_dir);
 
     let mut event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
@@ -82,6 +84,26 @@ fn main() -> Result<()> {
             ..Default::default()
         },
     };
+
+    let base_program = device.create_graphics_program(base_gfx_state)?;
+    device.compile_graphics_program(
+        base_program,
+        vulkan::RenderState {
+            depth: vulkan::DepthState {
+                test: None,
+                enable_write: false,
+                bias: 0.0,
+            },
+            rasterization: vulkan::RasterizationState {
+                enable_conservative_rasterization: false,
+                culling: false,
+            },
+            input_assembly: vulkan::InputAssemblyState {
+                topology: vulkan::PrimitiveTopology::TriangleList,
+            },
+            alpha_blending: true,
+        },
+    )?;
 
     let mut context_pools: [vulkan::ContextPool; FRAME_QUEUE_LENGTH] =
         [device.create_context_pool()?, device.create_context_pool()?];
@@ -152,6 +174,30 @@ fn main() -> Result<()> {
                     vulkan::ClearColorValue::Float32([1.0, 0.0, 1.0, 1.0]),
                 )],
             )?;
+            ctx.set_viewport(
+                &device,
+                vk::ViewportBuilder::new()
+                    .width(surface.size[0] as f32)
+                    .height(surface.size[1] as f32)
+                    .min_depth(0.0)
+                    .max_depth(1.0),
+            );
+            ctx.set_scissor(
+                &device,
+                vk::Rect2DBuilder::new().extent(
+                    *vk::Extent2DBuilder::new()
+                        .width(surface.size[0] as u32)
+                        .height(surface.size[1] as u32),
+                ),
+            );
+            ctx.bind_graphics_pipeline(&device, base_program, 0);
+            ctx.draw(
+                &device,
+                vulkan::DrawOptions {
+                    vertex_count: 6,
+                    ..Default::default()
+                },
+            );
             ctx.end_pass(&device);
             ctx.barrier(
                 &mut device,
@@ -208,8 +254,9 @@ fn main() -> Result<()> {
 
     surface.destroy(&instance, &mut device);
 
-    device.destroy_shader(base_vertex);
-    device.destroy_shader(base_frag);
+    device.destroy_program(base_program);
+    // device.destroy_shader(base_vertex);
+    // device.destroy_shader(base_frag);
 
     device.destroy();
     instance.destroy();
