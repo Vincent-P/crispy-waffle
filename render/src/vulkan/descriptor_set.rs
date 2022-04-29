@@ -61,7 +61,7 @@ impl BindlessSet {
 
         bindings.push(
             vk::DescriptorSetLayoutBindingBuilder::new()
-                .binding(0)
+                .binding(PER_SAMPLER as u32)
                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                 .descriptor_count(sampler_count)
                 .stage_flags(vk::ShaderStageFlags::ALL),
@@ -74,7 +74,7 @@ impl BindlessSet {
 
         bindings.push(
             vk::DescriptorSetLayoutBindingBuilder::new()
-                .binding(0)
+                .binding(PER_IMAGE as u32)
                 .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
                 .descriptor_count(image_count)
                 .stage_flags(vk::ShaderStageFlags::ALL),
@@ -87,7 +87,7 @@ impl BindlessSet {
 
         bindings.push(
             vk::DescriptorSetLayoutBindingBuilder::new()
-                .binding(0)
+                .binding(PER_BUFFER as u32)
                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                 .descriptor_count(buffer_count)
                 .stage_flags(vk::ShaderStageFlags::ALL),
@@ -182,7 +182,6 @@ impl BindlessSet {
 
 impl DynamicBufferDescriptor {
     pub fn new_layout(device: &DeviceLoader) -> VulkanResult<vk::DescriptorSetLayout> {
-        let vklayout = vk::DescriptorSetLayout::null();
         let binding = vk::DescriptorSetLayoutBindingBuilder::new()
             .binding(0)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
@@ -203,13 +202,12 @@ impl DynamicBufferDescriptor {
 
     pub fn new(
         device: &Device,
+        vkpool: vk::DescriptorPool,
+        vklayout: vk::DescriptorSetLayout,
         buffer_handle: Handle<Buffer>,
         range_size: usize,
     ) -> VulkanResult<Self> {
         let buffer = device.buffers.get(buffer_handle);
-
-        let vklayout = vk::DescriptorSetLayout::null();
-        let vkpool = vk::DescriptorPool::null();
 
         let vklayouts = [vklayout];
         let set_info = vk::DescriptorSetAllocateInfoBuilder::new()
@@ -247,6 +245,6 @@ impl DynamicBufferDescriptor {
             device.free_descriptor_sets(vkpool, &vksets).result()?;
         }
         self.vkset = vk::DescriptorSet::null();
-	Ok(())
+        Ok(())
     }
 }

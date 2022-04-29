@@ -214,16 +214,8 @@ impl Device<'_> {
             shader_stages.push(shader_info);
         }
 
-
-        let layout_info = vk::PipelineLayoutCreateInfoBuilder::new();
-        let dummy_layout = unsafe {
-            self.device
-                .create_pipeline_layout(&layout_info, None)
-                .result()?
-        };
-
         let pipeline_info = vk::GraphicsPipelineCreateInfoBuilder::new()
-            .layout(dummy_layout)
+            .layout(self.descriptors.pipeline_layout)
             .vertex_input_state(&vertex_input_info)
             .input_assembly_state(&input_assembly_info)
             .rasterization_state(&rasterization_info)

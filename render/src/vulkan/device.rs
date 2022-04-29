@@ -1,5 +1,6 @@
 use super::buffer::*;
 use super::contexts::*;
+use super::descriptor_set::*;
 use super::error::*;
 use super::fence::*;
 use super::framebuffer::*;
@@ -25,6 +26,13 @@ pub struct DeviceSpec<'a> {
     pub push_constant_size: usize,
 }
 
+pub struct DeviceDescriptors {
+    pub uniform_descriptor_pool: vk::DescriptorPool,
+    pub uniform_descriptor_layout: vk::DescriptorSetLayout,
+    pub bindless_set: BindlessSet,
+    pub pipeline_layout: vk::PipelineLayout,
+}
+
 pub struct Device<'a> {
     pub device: Box<DeviceLoader>,
     pub spec: DeviceSpec<'a>,
@@ -36,6 +44,7 @@ pub struct Device<'a> {
     pub buffers: Pool<Buffer>,
     pub framebuffers: Pool<Framebuffer>,
     pub shaders: Pool<Shader>,
+    pub descriptors: DeviceDescriptors,
     pub graphics_programs: Pool<GraphicsProgram>,
 }
 
@@ -128,6 +137,38 @@ impl<'a> Device<'a> {
         let config = Config::i_am_prototyping();
         let allocator = GpuAllocator::new(config, props);
 
+        let bindless_set = BindlessSet::new(&device, 1024, 1024, 1024)?;
+
+        let uniform_descriptor_pool = {
+            let pool_sizes = [vk::DescriptorPoolSizeBuilder::new()
+                ._type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+                .descriptor_count(16)];
+            let pool_info = vk::DescriptorPoolCreateInfoBuilder::new()
+                .pool_sizes(&pool_sizes)
+                .max_sets(16);
+            unsafe { device.create_descriptor_pool(&pool_info, None).result()? }
+        };
+
+        let uniform_descriptor_layout = DynamicBufferDescriptor::new_layout(&device)?;
+
+        let pipeline_layout = {
+            let push_constant_ranges = [vk::PushConstantRangeBuilder::new()
+                .stage_flags(vk::ShaderStageFlags::ALL)
+                .size(spec.push_constant_size as u32)];
+
+            let layouts = [bindless_set.vklayout, uniform_descriptor_layout];
+
+            let pipeline_layout_info = vk::PipelineLayoutCreateInfoBuilder::new()
+                .set_layouts(&layouts)
+                .push_constant_ranges(&push_constant_ranges);
+
+            unsafe {
+                device
+                    .create_pipeline_layout(&pipeline_layout_info, None)
+                    .result()?
+            }
+        };
+
         Ok(Device {
             device,
             spec,
@@ -139,6 +180,12 @@ impl<'a> Device<'a> {
             buffers: Pool::new(),
             framebuffers: Pool::new(),
             shaders: Pool::new(),
+            descriptors: DeviceDescriptors {
+                uniform_descriptor_pool,
+                uniform_descriptor_layout,
+                bindless_set,
+                pipeline_layout,
+            },
             graphics_programs: Pool::new(),
         })
     }

@@ -62,7 +62,7 @@ fn main() -> Result<()> {
         &instance,
         vulkan::DeviceSpec {
             physical_device: &mut physical_devices[i_selected],
-            push_constant_size: 0,
+            push_constant_size: 8,
         },
     )?;
 
