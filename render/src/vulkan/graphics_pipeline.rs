@@ -3,10 +3,8 @@ use super::error::*;
 use super::framebuffer::*;
 use super::shader::*;
 
-use exo::pool::Handle;
-
-use arrayvec::ArrayVec;
 use erupt::vk;
+use exo::{dynamic_array::DynamicArray, pool::Handle};
 use std::ffi::CString;
 
 pub const MAX_RENDER_STATES: usize = 4;
@@ -48,8 +46,8 @@ pub struct GraphicsState {
 pub struct GraphicsProgram {
     pub name: String,
     pub graphics_state: GraphicsState,
-    pub render_states: ArrayVec<RenderState, MAX_RENDER_STATES>,
-    pub pipelines: ArrayVec<vk::Pipeline, MAX_RENDER_STATES>,
+    pub render_states: DynamicArray<RenderState, MAX_RENDER_STATES>,
+    pub pipelines: DynamicArray<vk::Pipeline, MAX_RENDER_STATES>,
     pub cache: vk::PipelineCache,
     pub renderpass: vk::RenderPass,
 }
@@ -59,8 +57,8 @@ impl Device<'_> {
         &mut self,
         graphics_state: GraphicsState,
     ) -> VulkanResult<Handle<GraphicsProgram>> {
-        let mut load_ops = ArrayVec::<LoadOp, MAX_ATTACHMENTS>::new();
-        for i in 0..graphics_state.attachments_format.attachment_formats.len() {
+        let mut load_ops = DynamicArray::<LoadOp, MAX_ATTACHMENTS>::new();
+        for _ in 0..graphics_state.attachments_format.attachment_formats.len() {
             load_ops.push(LoadOp::Ignore);
         }
 
@@ -74,8 +72,8 @@ impl Device<'_> {
         let handle = self.graphics_programs.add(GraphicsProgram {
             name: String::new(),
             graphics_state,
-            render_states: ArrayVec::new(),
-            pipelines: ArrayVec::new(),
+            render_states: DynamicArray::new(),
+            pipelines: DynamicArray::new(),
             cache: vk::PipelineCache::null(),
             renderpass,
         });
@@ -85,7 +83,7 @@ impl Device<'_> {
 
     pub fn destroy_program(&mut self, program_handle: Handle<GraphicsProgram>) {
         let program = self.graphics_programs.get(program_handle);
-        for pipeline in program.pipelines.iter() {
+        for pipeline in &program.pipelines {
             unsafe {
                 self.device.destroy_pipeline(*pipeline, None);
             }
@@ -104,7 +102,7 @@ impl Device<'_> {
     ) -> VulkanResult<usize> {
         let program = self.graphics_programs.get_mut(program_handle);
 
-        let mut dynamic_states = ArrayVec::<vk::DynamicState, 4>::new();
+        let mut dynamic_states = DynamicArray::<vk::DynamicState, 4>::new();
         dynamic_states.push(vk::DynamicState::VIEWPORT);
         dynamic_states.push(vk::DynamicState::SCISSOR);
 
@@ -134,7 +132,7 @@ impl Device<'_> {
             .line_width(1.0);
 
         let mut attachment_blend_states =
-            ArrayVec::<vk::PipelineColorBlendAttachmentStateBuilder, MAX_ATTACHMENTS>::new();
+            DynamicArray::<vk::PipelineColorBlendAttachmentStateBuilder, MAX_ATTACHMENTS>::new();
 
         for _color_attachment in &program.graphics_state.attachments_format.attachment_formats {
             let mut state = vk::PipelineColorBlendAttachmentStateBuilder::new()
@@ -194,7 +192,7 @@ impl Device<'_> {
 
         let entrypoint = CString::new("main").unwrap();
         let module_name = &entrypoint;
-        let mut shader_stages = ArrayVec::<vk::PipelineShaderStageCreateInfoBuilder, 3>::new();
+        let mut shader_stages = DynamicArray::<vk::PipelineShaderStageCreateInfoBuilder, 3>::new();
 
         if program.graphics_state.vertex_shader.is_valid() {
             let shader = self.shaders.get(program.graphics_state.vertex_shader);

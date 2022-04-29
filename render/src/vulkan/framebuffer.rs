@@ -2,9 +2,8 @@ use super::device::*;
 use super::error::*;
 use super::image::*;
 
-use exo::pool::Handle;
+use exo::{dynamic_array::DynamicArray, pool::Handle};
 
-use arrayvec::ArrayVec;
 use erupt::{vk, DeviceLoader};
 
 pub const MAX_ATTACHMENTS: usize = 4;
@@ -13,7 +12,7 @@ pub const MAX_RENDERPASS: usize = 4; // max number of renderpasses per framebuff
 #[derive(Clone)]
 pub struct FramebufferFormat {
     pub size: [i32; 3],
-    pub attachment_formats: ArrayVec<vk::Format, MAX_ATTACHMENTS>,
+    pub attachment_formats: DynamicArray<vk::Format, MAX_ATTACHMENTS>,
     pub depth_format: Option<vk::Format>,
 }
 
@@ -21,7 +20,7 @@ impl Default for FramebufferFormat {
     fn default() -> Self {
         FramebufferFormat {
             size: [1, 1, 1],
-            attachment_formats: ArrayVec::new(),
+            attachment_formats: DynamicArray::new(),
             depth_format: None,
         }
     }
@@ -30,9 +29,9 @@ impl Default for FramebufferFormat {
 pub struct Framebuffer {
     pub vkhandle: vk::Framebuffer,
     pub format: FramebufferFormat,
-    pub color_attachments: ArrayVec<Handle<Image>, MAX_ATTACHMENTS>,
+    pub color_attachments: DynamicArray<Handle<Image>, MAX_ATTACHMENTS>,
     pub depth_attachment: Handle<Image>,
-    pub render_passes: ArrayVec<Renderpass, MAX_RENDERPASS>,
+    pub render_passes: DynamicArray<Renderpass, MAX_RENDERPASS>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -58,7 +57,7 @@ pub enum LoadOp {
 
 pub struct Renderpass {
     pub vkhandle: vk::RenderPass,
-    pub load_ops: ArrayVec<LoadOp, MAX_ATTACHMENTS>,
+    pub load_ops: DynamicArray<LoadOp, MAX_ATTACHMENTS>,
 }
 
 pub fn create_renderpass(
@@ -70,8 +69,9 @@ pub fn create_renderpass(
         format.attachment_formats.len() + if format.depth_format.is_some() { 1 } else { 0 };
     assert!(load_ops.len() == attachment_count);
 
-    let mut color_refs = ArrayVec::<vk::AttachmentReferenceBuilder, MAX_ATTACHMENTS>::new();
-    let mut attachment_descs = ArrayVec::<vk::AttachmentDescriptionBuilder, MAX_ATTACHMENTS>::new();
+    let mut color_refs = DynamicArray::<vk::AttachmentReferenceBuilder, MAX_ATTACHMENTS>::new();
+    let mut attachment_descs =
+        DynamicArray::<vk::AttachmentDescriptionBuilder, MAX_ATTACHMENTS>::new();
 
     for i_color in 0..format.attachment_formats.len() {
         color_refs.push(
@@ -109,11 +109,7 @@ pub fn create_renderpass(
 
     let vkhandle = unsafe { device.create_render_pass(&renderpass_info, None).result()? };
 
-    let load_ops = {
-        let mut vec = ArrayVec::<LoadOp, MAX_ATTACHMENTS>::new();
-        vec.try_extend_from_slice(load_ops).unwrap();
-        vec
-    };
+    let load_ops = DynamicArray::<LoadOp, MAX_ATTACHMENTS>::from(load_ops);
     Ok(Renderpass { vkhandle, load_ops })
 }
 
@@ -127,15 +123,15 @@ impl Device<'_> {
         let mut framebuffer = Framebuffer {
             vkhandle: vk::Framebuffer::null(),
             format: format.clone(),
-            color_attachments: ArrayVec::new(),
+            color_attachments: DynamicArray::new(),
             depth_attachment: Handle::invalid(),
-            render_passes: ArrayVec::new(),
+            render_passes: DynamicArray::new(),
         };
 
         let attachment_count =
             color_attachments.len() + if depth_attachment.is_valid() { 1 } else { 0 };
 
-        let mut attachment_views = ArrayVec::<vk::ImageView, MAX_ATTACHMENTS>::new();
+        let mut attachment_views = DynamicArray::<vk::ImageView, MAX_ATTACHMENTS>::new();
         for attachment in color_attachments {
             let image = self.images.get(*attachment);
             attachment_views.push(image.full_view.vkhandle);
@@ -151,8 +147,8 @@ impl Device<'_> {
             framebuffer.format.depth_format = Some(image.spec.format);
         }
 
-        let mut load_ops = ArrayVec::<LoadOp, MAX_ATTACHMENTS>::new();
-        for i in 0..attachment_count {
+        let mut load_ops = DynamicArray::<LoadOp, MAX_ATTACHMENTS>::new();
+        for _ in 0..attachment_count {
             load_ops.push(LoadOp::Ignore);
         }
 
@@ -206,7 +202,7 @@ impl Device<'_> {
         let mut i_renderpass = framebuffer
             .render_passes
             .iter()
-            .position(|renderpass| &renderpass.load_ops == load_ops);
+            .position(|renderpass| renderpass.load_ops.as_slice() == load_ops);
 
         if i_renderpass.is_none() {
             framebuffer.render_passes.push(create_renderpass(

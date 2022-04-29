@@ -1,11 +1,10 @@
-use exo::pool::Handle;
+use exo::{dynamic_array::DynamicArray, pool::Handle};
 
 use super::buffer::*;
 use super::device::*;
 use super::error::*;
 use super::image::*;
 
-use arrayvec::ArrayVec;
 use erupt::{vk, DeviceLoader, ExtendableFrom};
 
 pub struct DynamicBufferDescriptor {
@@ -56,8 +55,8 @@ impl BindlessSet {
             .max_sets(3);
         let vkpool = unsafe { device.create_descriptor_pool(&pool_info, None).result()? };
 
-        let mut bindings = ArrayVec::<vk::DescriptorSetLayoutBindingBuilder, 3>::new();
-        let mut flags = ArrayVec::<vk::DescriptorBindingFlags, 3>::new();
+        let mut bindings = DynamicArray::<vk::DescriptorSetLayoutBindingBuilder, 3>::new();
+        let mut flags = DynamicArray::<vk::DescriptorBindingFlags, 3>::new();
 
         bindings.push(
             vk::DescriptorSetLayoutBindingBuilder::new()

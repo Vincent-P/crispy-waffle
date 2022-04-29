@@ -3,15 +3,14 @@ use super::error::*;
 use super::image::*;
 use super::instance::*;
 
-use exo::pool::Handle;
+use exo::{dynamic_array::DynamicArray, pool::Handle};
 
-use arrayvec::ArrayVec;
 use erupt::vk;
 use raw_window_handle::HasRawWindowHandle;
 
 pub const MAX_SWAPCHAIN_IMAGES: usize = 6;
 
-type PerImage<T> = ArrayVec<T, MAX_SWAPCHAIN_IMAGES>;
+type PerImage<T> = DynamicArray<T, MAX_SWAPCHAIN_IMAGES>;
 
 pub struct Surface {
     pub surface: vk::SurfaceKHR,
@@ -37,7 +36,7 @@ impl Surface {
         }
         .result()?;
 
-        let graphics_present_support = unsafe {
+        let _graphics_present_support = unsafe {
             instance.instance.get_physical_device_surface_support_khr(
                 device.spec.physical_device.device,
                 device.graphics_family_idx,
@@ -101,9 +100,9 @@ impl Surface {
             size: [0, 0],
             current_image: 0,
             previous_image: 0,
-            images: ArrayVec::new(),
-            image_acquired_semaphores: ArrayVec::new(),
-            can_present_semaphores: ArrayVec::new(),
+            images: DynamicArray::new(),
+            image_acquired_semaphores: DynamicArray::new(),
+            can_present_semaphores: DynamicArray::new(),
         };
 
         surface.create_swapchain(instance, device)?;
@@ -197,7 +196,7 @@ impl Surface {
                         .result()?,
                 );
 
-                let raw_handle = self.image_acquired_semaphores.as_slice().last().unwrap().0;
+                let raw_handle = self.image_acquired_semaphores.back().0;
                 device.set_vk_name(
                     raw_handle,
                     vk::ObjectType::SEMAPHORE,
@@ -211,7 +210,7 @@ impl Surface {
                         .result()?,
                 );
 
-                let raw_handle = self.can_present_semaphores.as_slice().last().unwrap().0;
+                let raw_handle = self.can_present_semaphores.back().0;
                 device.set_vk_name(
                     raw_handle,
                     vk::ObjectType::SEMAPHORE,

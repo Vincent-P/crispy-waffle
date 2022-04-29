@@ -11,9 +11,8 @@ use super::physical_device::*;
 use super::shader::*;
 use super::surface::*;
 
-use exo::pool::Pool;
+use exo::{dynamic_array::DynamicArray, pool::Pool};
 
-use arrayvec::ArrayVec;
 use erupt::{cstr, vk, DeviceLoader, ExtendableFrom};
 use gpu_alloc::{Config, GpuAllocator};
 use std::ffi::CString;
@@ -50,7 +49,7 @@ pub struct Device<'a> {
 
 impl<'a> Device<'a> {
     pub fn new(instance: &'a Instance, spec: DeviceSpec<'a>) -> VulkanResult<Self> {
-        let mut device_extensions = ArrayVec::<_, 8>::new();
+        let mut device_extensions = DynamicArray::<_, 8>::new();
         device_extensions.push(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
         let queue_families = unsafe {
@@ -59,7 +58,7 @@ impl<'a> Device<'a> {
                 .get_physical_device_queue_family_properties(spec.physical_device.device, None)
         };
 
-        let mut queue_create_infos = ArrayVec::<_, 8>::new();
+        let mut queue_create_infos = DynamicArray::<_, 8>::new();
         let mut graphics_family_idx = None;
         let mut compute_family_idx = None;
         let mut transfer_family_idx = None;
@@ -202,8 +201,8 @@ impl<'a> Device<'a> {
     ) -> VulkanResult<()> {
         let context = context.base_context();
 
-        let mut signal_list = ArrayVec::<vk::Semaphore, 4>::new();
-        let mut local_signal_values = ArrayVec::<u64, 4>::new();
+        let mut signal_list = DynamicArray::<vk::Semaphore, 4>::new();
+        let mut local_signal_values = DynamicArray::<u64, 4>::new();
         for fence in signal_fences {
             signal_list.push(fence.timeline_semaphore);
         }
@@ -217,9 +216,9 @@ impl<'a> Device<'a> {
             local_signal_values.push(0);
         }
 
-        let mut semaphore_list = ArrayVec::<vk::Semaphore, { MAX_SEMAPHORES + 1 }>::new();
-        let mut value_list = ArrayVec::<u64, { MAX_SEMAPHORES + 1 }>::new();
-        let mut stage_list = ArrayVec::<vk::PipelineStageFlags, { MAX_SEMAPHORES + 1 }>::new();
+        let mut semaphore_list = DynamicArray::<vk::Semaphore, { MAX_SEMAPHORES + 1 }>::new();
+        let mut value_list = DynamicArray::<u64, { MAX_SEMAPHORES + 1 }>::new();
+        let mut stage_list = DynamicArray::<vk::PipelineStageFlags, { MAX_SEMAPHORES + 1 }>::new();
 
         for i in 0..context.wait_fence_list.len() {
             semaphore_list.push(context.wait_fence_list[i].timeline_semaphore);

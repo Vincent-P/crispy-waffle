@@ -8,18 +8,17 @@ use super::image::*;
 use super::queues;
 use super::surface::*;
 
-use exo::pool::Handle;
+use exo::{dynamic_array::DynamicArray, pool::Handle};
 
-use arrayvec::ArrayVec;
 use erupt::vk;
 
 pub const MAX_SEMAPHORES: usize = 4;
 
 pub struct BaseContext {
     pub cmd: vk::CommandBuffer,
-    pub wait_fence_list: ArrayVec<Fence, MAX_SEMAPHORES>,
-    pub wait_value_list: ArrayVec<u64, MAX_SEMAPHORES>,
-    pub wait_stage_list: ArrayVec<vk::PipelineStageFlags, MAX_SEMAPHORES>,
+    pub wait_fence_list: DynamicArray<Fence, MAX_SEMAPHORES>,
+    pub wait_value_list: DynamicArray<u64, MAX_SEMAPHORES>,
+    pub wait_stage_list: DynamicArray<vk::PipelineStageFlags, MAX_SEMAPHORES>,
     pub queue: vk::Queue,
     pub queue_type: usize,
     pub image_acquired_semaphore: Option<vk::Semaphore>,
@@ -100,9 +99,9 @@ impl<'a> Device<'a> {
 
         Ok(BaseContext {
             cmd,
-            wait_fence_list: Default::default(),
-            wait_value_list: Default::default(),
-            wait_stage_list: Default::default(),
+            wait_fence_list: DynamicArray::new(),
+            wait_value_list: DynamicArray::new(),
+            wait_stage_list: DynamicArray::new(),
             queue,
             queue_type: i_queue,
             image_acquired_semaphore: None,
@@ -230,7 +229,7 @@ pub trait GraphicsContextMethods: ComputeContextMethods {
         let (framebuffer, renderpass) =
             device.find_framebuffer_renderpass(framebuffer_handle, load_ops)?;
 
-        let mut clear_values = ArrayVec::<vk::ClearValue, MAX_ATTACHMENTS>::new();
+        let mut clear_values = DynamicArray::<vk::ClearValue, MAX_ATTACHMENTS>::new();
         for load_op in load_ops {
             clear_values.push(load_op.clear_value());
         }

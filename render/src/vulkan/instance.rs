@@ -1,6 +1,8 @@
+use exo::dynamic_array::DynamicArray;
+
 use super::error::*;
 use super::physical_device::*;
-use arrayvec::ArrayVec;
+
 use erupt::{cstr, vk, EntryLoader, InstanceLoader};
 use std::{
     ffi::{c_void, CStr},
@@ -61,7 +63,7 @@ impl Instance {
     pub fn new(spec: InstanceSpec) -> VulkanResult<Instance> {
         let entry = Box::new(EntryLoader::new().unwrap());
 
-        let mut instance_extensions = ArrayVec::<_, 8>::new();
+        let mut instance_extensions = DynamicArray::<_, 8>::new();
         if spec.enable_graphic_windows {
             instance_extensions.push(VK_KHR_SURFACE_EXTENSION_NAME);
             if cfg!(windows) {
@@ -74,7 +76,7 @@ impl Instance {
 
         let installed_layers =
             unsafe { entry.enumerate_instance_layer_properties(None) }.result()?;
-        let mut instance_layers = ArrayVec::<_, 8>::new();
+        let mut instance_layers = DynamicArray::<_, 8>::new();
 
         let mut validation_enabled = false;
         for layer in installed_layers {
@@ -133,11 +135,11 @@ impl Instance {
 
     pub fn get_physical_devices(
         &self,
-    ) -> VulkanResult<ArrayVec<PhysicalDevice, MAX_PHYSICAL_DEVICES>> {
+    ) -> VulkanResult<DynamicArray<PhysicalDevice, MAX_PHYSICAL_DEVICES>> {
         let vkphysical_devices =
             unsafe { self.instance.enumerate_physical_devices(None) }.result()?;
 
-        let mut physical_devices = ArrayVec::<PhysicalDevice, MAX_PHYSICAL_DEVICES>::new();
+        let mut physical_devices = DynamicArray::<PhysicalDevice, MAX_PHYSICAL_DEVICES>::new();
 
         for vkphysical_device in vkphysical_devices {
             physical_devices.push(PhysicalDevice {
@@ -148,7 +150,7 @@ impl Instance {
                 },
                 ..Default::default()
             });
-            let physical_device = physical_devices.as_mut_slice().last_mut().unwrap();
+            let physical_device = physical_devices.back_mut();
 
             physical_device.features.p_next =
                 &mut physical_device.vulkan12_features as *mut _ as *mut c_void;

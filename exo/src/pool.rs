@@ -46,6 +46,12 @@ impl<T> Handle<T> {
     }
 }
 
+impl<T> Default for Handle<T> {
+    fn default() -> Self {
+        Self::invalid()
+    }
+}
+
 pub struct Pool<T> {
     values: Vec<(Metadata, Entry<T>)>,
     freelist_head: Option<u32>,

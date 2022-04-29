@@ -1,5 +1,5 @@
 use anyhow::Result;
-use exo::pool::Handle;
+use exo::{dynamic_array::DynamicArray, pool::Handle};
 use std::{ffi::CStr, os::raw::c_char, path::PathBuf};
 use winit::{
     event::{Event, WindowEvent},
@@ -9,7 +9,6 @@ use winit::{
 };
 
 use render::{
-    arrayvec::ArrayVec,
     vk, vulkan,
     vulkan::{
         contexts::{GraphicsContextMethods, TransferContextMethods},
@@ -76,11 +75,7 @@ fn main() -> Result<()> {
             .create_shader(shader_dir.with_file_name("base.frag.spv"))
             .unwrap(),
         attachments_format: vulkan::FramebufferFormat {
-            attachment_formats: {
-                let mut formats = ArrayVec::new();
-                formats.push(surface.format.format);
-                formats
-            },
+            attachment_formats: DynamicArray::from([surface.format.format]),
             ..Default::default()
         },
     };
@@ -112,7 +107,7 @@ fn main() -> Result<()> {
     let fence = device.create_fence()?;
 
     let mut framebuffers =
-        ArrayVec::<Handle<vulkan::Framebuffer>, { vulkan::MAX_SWAPCHAIN_IMAGES }>::new();
+        DynamicArray::<Handle<vulkan::Framebuffer>, { vulkan::MAX_SWAPCHAIN_IMAGES }>::new();
     for i_image in 0..surface.images.len() {
         framebuffers.push(device.create_framebuffer(
             &vulkan::FramebufferFormat {
@@ -208,7 +203,7 @@ fn main() -> Result<()> {
             ctx.prepare_present(&surface);
             device.submit(&ctx, &[&fence], &[(i_frame as u64) + 1])?;
             i_frame += 1;
-            let outdated = device.present(&ctx, &surface)?;
+            let _outdated = device.present(&ctx, &surface)?;
 
             Ok(())
         };
@@ -243,8 +238,8 @@ fn main() -> Result<()> {
 
     device.wait_idle()?;
 
-    for framebuffer in framebuffers {
-        device.destroy_framebuffer(framebuffer);
+    for framebuffer in &framebuffers {
+        device.destroy_framebuffer(*framebuffer);
     }
 
     device.destroy_fence(fence);

@@ -1,4 +1,5 @@
-use arrayvec::ArrayVec;
+use exo::dynamic_array::DynamicArray;
+
 use erupt::{vk, ExtendableFrom};
 
 use super::device::*;
@@ -46,7 +47,7 @@ impl Device<'_> {
     pub fn wait_for_fences(&self, fences: &[&Fence], wait_values: &[u64]) -> VulkanResult<()> {
         assert!(fences.len() == wait_values.len());
 
-        let mut semaphores = ArrayVec::<vk::Semaphore, 4>::new();
+        let mut semaphores = DynamicArray::<vk::Semaphore, 4>::new();
         for fence in fences {
             semaphores.push(fence.timeline_semaphore);
         }
