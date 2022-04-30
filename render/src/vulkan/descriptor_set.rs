@@ -13,21 +13,22 @@ pub struct DynamicBufferDescriptor {
     size: usize,
 }
 
-type PerSet<T> = [T; 3];
-const PER_SAMPLER: usize = 0;
-const PER_IMAGE: usize = 1;
-const PER_BUFFER: usize = 2;
+pub const BINDLESS_SETS: usize = 3;
+type PerSet<T> = [T; BINDLESS_SETS];
+pub const PER_SAMPLER: usize = 0;
+pub const PER_IMAGE: usize = 1;
+pub const PER_BUFFER: usize = 2;
 
 pub struct BindlessSet {
     pub vkpool: vk::DescriptorPool,
     pub vklayout: vk::DescriptorSetLayout,
     pub vkset: vk::DescriptorSet,
-    sampler_images: Vec<Handle<Image>>,
-    storage_images: Vec<Handle<Image>>,
-    storage_buffers: Vec<Handle<Buffer>>,
-    free_lists: PerSet<Vec<usize>>,
-    pending_binds: PerSet<Vec<usize>>,
-    pending_unbinds: PerSet<Vec<usize>>,
+    pub sampler_images: Vec<Handle<Image>>,
+    pub storage_images: Vec<Handle<Image>>,
+    pub storage_buffers: Vec<Handle<Buffer>>,
+    pub free_lists: PerSet<Vec<usize>>,
+    pub pending_binds: PerSet<Vec<usize>>,
+    pub pending_unbinds: PerSet<Vec<usize>>,
 }
 
 impl BindlessSet {
@@ -51,11 +52,12 @@ impl BindlessSet {
         let pool_info = vk::DescriptorPoolCreateInfoBuilder::new()
             .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
             .pool_sizes(&pool_sizes)
-            .max_sets(3);
+            .max_sets(BINDLESS_SETS as u32);
         let vkpool = unsafe { device.create_descriptor_pool(&pool_info, None).result()? };
 
-        let mut bindings = DynamicArray::<vk::DescriptorSetLayoutBindingBuilder, 3>::new();
-        let mut flags = DynamicArray::<vk::DescriptorBindingFlags, 3>::new();
+        let mut bindings =
+            DynamicArray::<vk::DescriptorSetLayoutBindingBuilder, BINDLESS_SETS>::new();
+        let mut flags = DynamicArray::<vk::DescriptorBindingFlags, BINDLESS_SETS>::new();
 
         bindings.push(
             vk::DescriptorSetLayoutBindingBuilder::new()
@@ -117,13 +119,13 @@ impl BindlessSet {
         let vkset = unsafe { device.allocate_descriptor_sets(&set_info).result()? }[0];
 
         let mut free_lists: PerSet<Vec<usize>> = [
-            (1..(sampler_count as usize) + 1).collect(),
-            (1..(image_count as usize) + 1).collect(),
-            (1..(buffer_count as usize) + 1).collect(),
+            (1..(sampler_count as usize) + 1).rev().collect(),
+            (1..(image_count as usize) + 1).rev().collect(),
+            (1..(buffer_count as usize) + 1).rev().collect(),
         ];
-        free_lists[PER_SAMPLER][(sampler_count as usize) - 1] = !0usize;
-        free_lists[PER_IMAGE][(image_count as usize) - 1] = !0usize;
-        free_lists[PER_BUFFER][(buffer_count as usize) - 1] = !0usize;
+        free_lists[PER_SAMPLER][0] = !0usize;
+        free_lists[PER_IMAGE][0] = !0usize;
+        free_lists[PER_BUFFER][0] = !0usize;
 
         Ok(Self {
             vkpool,
@@ -160,8 +162,11 @@ impl BindlessSet {
         }
     }
 
+    pub fn update(&mut self, device: &Device) {}
+
     pub fn bind_sampler_image(&mut self, image_handle: Handle<Image>) -> usize {
         let new_index = self.free_lists[PER_SAMPLER].pop().unwrap();
+        assert!(new_index != !0usize);
         self.sampler_images[new_index] = image_handle;
         self.pending_binds[PER_SAMPLER].push(new_index);
         new_index

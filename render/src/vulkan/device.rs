@@ -46,6 +46,7 @@ pub struct Device<'a> {
     pub shaders: Pool<Shader>,
     pub descriptors: DeviceDescriptors,
     pub graphics_programs: Pool<GraphicsProgram>,
+    pub sampler: vk::Sampler,
 }
 
 impl<'a> Device<'a> {
@@ -173,7 +174,12 @@ impl<'a> Device<'a> {
             }
         };
 
-        Ok(Device {
+        let sampler = unsafe {
+            let sampler_info = vk::SamplerCreateInfoBuilder::new();
+            device.create_sampler(&sampler_info, None).result()?
+        };
+
+        let mut device = Device {
             device,
             spec,
             allocator,
@@ -192,7 +198,13 @@ impl<'a> Device<'a> {
                 pipeline_layout,
             },
             graphics_programs: Pool::new(),
-        })
+            sampler,
+        };
+
+        // Empty image for bindless clear #0
+        device.create_image(Default::default());
+
+        Ok(device)
     }
 
     pub fn destroy(self) {
@@ -328,5 +340,136 @@ impl<'a> Device<'a> {
     pub fn wait_idle(&self) -> VulkanResult<()> {
         unsafe { self.device.device_wait_idle().result()? }
         Ok(())
+    }
+
+    pub fn update_bindless_set(&mut self) {
+        let bindless_set = &mut self.descriptors.bindless_set;
+
+        let total_bind_count = bindless_set
+            .pending_binds
+            .iter()
+            .fold(0, |r, arr| r + arr.len());
+        let total_unbind_count = bindless_set
+            .pending_unbinds
+            .iter()
+            .fold(0, |r, arr| r + arr.len());
+
+        if total_bind_count == 0 && total_unbind_count == 0 {
+            return;
+        }
+
+        let mut descriptor_writes: Vec<vk::WriteDescriptorSetBuilder> = vec![];
+        let mut descriptor_copies: Vec<vk::CopyDescriptorSetBuilder> = vec![];
+        descriptor_writes.reserve(total_bind_count);
+        descriptor_copies.reserve(total_unbind_count);
+
+        let mut image_infos: Vec<vk::DescriptorImageInfoBuilder> = vec![];
+        let mut buffer_infos: Vec<vk::DescriptorBufferInfoBuilder> = vec![];
+        image_infos.reserve(
+            bindless_set.pending_binds[PER_SAMPLER].len()
+                + bindless_set.pending_binds[PER_IMAGE].len(),
+        );
+        buffer_infos.reserve(bindless_set.pending_binds[PER_BUFFER].len());
+
+        // Hack for borrow checker
+        let mut writes_indirection: Vec<(usize, usize, bool)> = vec![];
+
+        let descriptor_types = [
+            vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            vk::DescriptorType::STORAGE_IMAGE,
+            vk::DescriptorType::STORAGE_BUFFER,
+        ];
+
+        for i_set in 0..BINDLESS_SETS {
+            let image_layout =
+                if descriptor_types[i_set] == vk::DescriptorType::COMBINED_IMAGE_SAMPLER {
+                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+                } else {
+                    vk::ImageLayout::GENERAL
+                };
+
+            for to_bind in &bindless_set.pending_binds[i_set] {
+                assert!(*to_bind < std::u32::MAX as usize);
+                descriptor_writes.push(
+                    vk::WriteDescriptorSetBuilder::new()
+                        .dst_set(bindless_set.vkset)
+                        .dst_binding(i_set as u32)
+                        .dst_array_element(*to_bind as u32)
+                        .descriptor_type(descriptor_types[i_set]),
+                );
+                match i_set {
+                    PER_SAMPLER => {
+                        let image_handle = bindless_set.sampler_images[*to_bind];
+                        let image = self.images.get(image_handle);
+                        let i_info = image_infos.len();
+                        image_infos.push(
+                            vk::DescriptorImageInfoBuilder::new()
+                                .sampler(self.sampler)
+                                .image_view(image.full_view.vkhandle)
+                                .image_layout(image_layout),
+                        );
+                        writes_indirection.push((i_info, i_info + 1, true));
+                    }
+                    PER_IMAGE => {
+                        let image_handle = bindless_set.sampler_images[*to_bind];
+                        let image = self.images.get(image_handle);
+                        let i_info = image_infos.len();
+                        image_infos.push(
+                            vk::DescriptorImageInfoBuilder::new()
+                                .sampler(self.sampler)
+                                .image_view(image.full_view.vkhandle)
+                                .image_layout(image_layout),
+                        );
+                        writes_indirection.push((i_info, i_info + 1, true));
+                    }
+                    PER_BUFFER => {
+                        let buffer_handle = bindless_set.storage_buffers[*to_bind];
+                        let buffer = self.buffers.get(buffer_handle);
+                        let i_info = buffer_infos.len();
+                        buffer_infos.push(
+                            vk::DescriptorBufferInfoBuilder::new()
+                                .buffer(buffer.vkhandle)
+                                .range(buffer.spec.size as u64),
+                        );
+                        writes_indirection.push((i_info, i_info + 1, false));
+                    }
+                    _ => unreachable!(),
+                }
+            }
+
+            for to_unbind in &bindless_set.pending_unbinds[i_set] {
+                assert!(*to_unbind < std::u32::MAX as usize);
+                if bindless_set.pending_binds[i_set].contains(to_unbind) {
+                    continue;
+                }
+
+                descriptor_copies.push(
+                    vk::CopyDescriptorSetBuilder::new()
+                        .src_set(bindless_set.vkset)
+                        .src_binding(0)
+                        .src_array_element(0)
+                        .dst_set(bindless_set.vkset)
+                        .dst_binding(i_set as u32)
+                        .dst_array_element(*to_unbind as u32)
+                        .descriptor_count(1),
+                );
+            }
+
+            bindless_set.pending_binds[i_set].clear();
+            bindless_set.pending_unbinds[i_set].clear();
+        }
+
+        for (i, &(start, end, is_image)) in writes_indirection.iter().enumerate() {
+            if is_image {
+                descriptor_writes[i] = descriptor_writes[i].image_info(&image_infos[start..end]);
+            } else {
+                descriptor_writes[i] = descriptor_writes[i].buffer_info(&buffer_infos[start..end]);
+            }
+        }
+
+        unsafe {
+            self.device
+                .update_descriptor_sets(&descriptor_writes, &descriptor_copies);
+        }
     }
 }

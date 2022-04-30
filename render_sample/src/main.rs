@@ -178,7 +178,8 @@ fn main() -> Result<()> {
                 outdated = device.acquire_next_swapchain(&mut surface)?;
             }
 
-            let framebuffer = framebuffers[surface.current_image as usize];
+            device.update_bindless_set();
+
             let mut ctx = device.get_graphics_context(context_pool)?;
             ctx.begin(&device)?;
             ctx.wait_for_acquired(&surface, vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT);
@@ -203,7 +204,7 @@ fn main() -> Result<()> {
 
             ctx.begin_pass(
                 &mut device,
-                framebuffer,
+                framebuffers[surface.current_image as usize],
                 &[vulkan::LoadOp::ClearColor(
                     vulkan::ClearColorValue::Float32([1.0, 0.0, 1.0, 1.0]),
                 )],

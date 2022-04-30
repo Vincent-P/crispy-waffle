@@ -150,16 +150,23 @@ impl Device<'_> {
             vk::ImageType::_3D => vk::ImageViewType::_3D,
             _ => unreachable!(),
         };
-        let full_view =
+        let mut full_view =
             self.create_image_view(vkimage, *full_range, spec.format, full_view_type)?;
 
-        Ok(self.images.add(Image {
+        let image_handle = self.images.add(Image {
             vkhandle: vkimage,
             memory_block: Some(memory_block),
             spec,
             full_view,
             state: ImageState::Null,
-        }))
+        });
+
+        self.images.get_mut(image_handle).full_view.sampled_idx =
+            self.descriptors
+                .bindless_set
+                .bind_sampler_image(image_handle) as u32;
+
+        Ok(image_handle)
     }
 
     pub fn create_image_proxy(

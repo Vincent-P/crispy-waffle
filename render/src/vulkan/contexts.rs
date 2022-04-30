@@ -155,6 +155,31 @@ pub trait TransferContextMethods: HasBaseContext {
                 .result()?;
         }
 
+        let global_set = device.descriptors.bindless_set.vkset;
+        if base_context.queue_type == queues::COMPUTE {
+            unsafe {
+                device.device.cmd_bind_descriptor_sets(
+                    base_context.cmd,
+                    vk::PipelineBindPoint::COMPUTE,
+                    device.descriptors.pipeline_layout,
+                    0,
+                    &[global_set],
+                    &[],
+                );
+            }
+        } else if base_context.queue_type == queues::GRAPHICS {
+            unsafe {
+                device.device.cmd_bind_descriptor_sets(
+                    base_context.cmd,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    device.descriptors.pipeline_layout,
+                    0,
+                    &[global_set],
+                    &[],
+                );
+            }
+        }
+
         Ok(())
     }
 
