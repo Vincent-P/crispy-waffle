@@ -9,6 +9,8 @@ use winit::{
 };
 
 use render::{
+    bindings,
+    ring_buffer::*,
     vk, vulkan,
     vulkan::{
         contexts::{GraphicsContextMethods, TransferContextMethods},
@@ -17,6 +19,20 @@ use render::{
 };
 
 const FRAME_QUEUE_LENGTH: usize = 2;
+
+/*
+buffers
+ring buffer
+dynamic uniform buffer
+bind descriptors with dynamic offset
+draw2d
+ui
+
+crates:
+bytemuck?
+allsorts
+ab_glyph
+*/
 
 fn main() -> Result<()> {
     let mut shader_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
@@ -119,6 +135,15 @@ fn main() -> Result<()> {
         )?);
     }
 
+    let mut uniform_buffer = RingBuffer::new(
+        &mut device,
+        RingBufferSpec {
+            usages: vk::BufferUsageFlags::UNIFORM_BUFFER,
+            frame_queue_length: FRAME_QUEUE_LENGTH,
+            buffer_size: 1024,
+        },
+    )?;
+
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
@@ -162,6 +187,20 @@ fn main() -> Result<()> {
                 surface.images[surface.current_image as usize],
                 vulkan::ImageState::ColorAttachment,
             );
+
+            let options =
+                bindings::bind_shader_options(&mut device, &mut uniform_buffer, &ctx, 16)?;
+            unsafe {
+                let float_options = std::slice::from_raw_parts_mut(
+                    (*options).as_ptr() as *mut f32,
+                    (*options).len() / std::mem::size_of::<f32>(),
+                );
+                float_options[0] = 1.0;
+                float_options[1] = 1.0;
+                float_options[2] = 0.0;
+                float_options[3] = 1.0;
+            }
+
             ctx.begin_pass(
                 &mut device,
                 framebuffer,

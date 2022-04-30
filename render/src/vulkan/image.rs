@@ -27,7 +27,6 @@ pub struct ImageAccess {
     pub layout: vk::ImageLayout,
 }
 
-#[derive(Clone)]
 pub struct ImageSpec {
     pub size: [i32; 3],
     pub mip_levels: u32,
@@ -68,7 +67,7 @@ pub struct Image {
     pub state: ImageState,
 }
 
-impl<'a> Device<'a> {
+impl Device<'_> {
     fn create_image_view(
         &mut self,
         image: vk::Image,

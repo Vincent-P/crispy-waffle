@@ -8,10 +8,9 @@ use super::image::*;
 use erupt::{vk, DeviceLoader, ExtendableFrom};
 
 pub struct DynamicBufferDescriptor {
-    pub buffer: Handle<Buffer>,
+    buffer: Handle<Buffer>,
     pub vkset: vk::DescriptorSet,
-    pub dynamic_offset: u32,
-    pub size: u32,
+    size: usize,
 }
 
 type PerSet<T> = [T; 3];
@@ -232,8 +231,7 @@ impl DynamicBufferDescriptor {
         Ok(Self {
             buffer: buffer_handle,
             vkset,
-            dynamic_offset: 0,
-            size: range_size as u32,
+            size: range_size,
         })
     }
 
@@ -245,5 +243,36 @@ impl DynamicBufferDescriptor {
         }
         self.vkset = vk::DescriptorSet::null();
         Ok(())
+    }
+}
+
+impl Device<'_> {
+    pub fn find_or_create_uniform_descriptor(
+        &mut self,
+        buffer: Handle<Buffer>,
+        size: usize,
+    ) -> VulkanResult<usize> {
+        match self
+            .descriptors
+            .uniform_descriptor_sets
+            .iter()
+            .position(|descriptor| descriptor.buffer == buffer && descriptor.size == size)
+        {
+            Some(i_descriptor) => Ok(i_descriptor),
+            None => {
+                let res = Ok(self.descriptors.uniform_descriptor_sets.len());
+                self.descriptors
+                    .uniform_descriptor_sets
+                    .push(DynamicBufferDescriptor::new(
+                        self,
+                        self.descriptors.uniform_descriptor_pool,
+                        self.descriptors.uniform_descriptor_layout,
+                        buffer,
+                        size,
+                    )?);
+
+                res
+            }
+        }
     }
 }

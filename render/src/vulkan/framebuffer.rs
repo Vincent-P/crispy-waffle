@@ -73,6 +73,7 @@ pub fn create_renderpass(
     let mut attachment_descs =
         DynamicArray::<vk::AttachmentDescriptionBuilder, MAX_ATTACHMENTS>::new();
 
+    #[allow(clippy::needless_range_loop)]
     for i_color in 0..format.attachment_formats.len() {
         color_refs.push(
             vk::AttachmentReferenceBuilder::new()
@@ -159,14 +160,7 @@ impl Device<'_> {
         )?);
 
         let framebuffer_info = vk::FramebufferCreateInfoBuilder::new()
-            .render_pass(
-                framebuffer
-                    .render_passes
-                    .as_slice()
-                    .last()
-                    .unwrap()
-                    .vkhandle,
-            )
+            .render_pass((&framebuffer.render_passes).last().unwrap().vkhandle)
             .attachments(&attachment_views)
             .width(framebuffer.format.size[0] as u32)
             .height(framebuffer.format.size[1] as u32)

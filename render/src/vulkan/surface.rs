@@ -26,10 +26,10 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn new(
+    pub fn new<WindowHandle: HasRawWindowHandle>(
         instance: &Instance,
         device: &mut Device,
-        window_handle: &impl HasRawWindowHandle,
+        window_handle: &WindowHandle,
     ) -> VulkanResult<Surface> {
         let surface = unsafe {
             erupt::utils::surface::create_surface(&instance.instance, window_handle, None)

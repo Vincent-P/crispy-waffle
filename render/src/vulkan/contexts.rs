@@ -1,4 +1,5 @@
 use super::context_pool::*;
+use super::descriptor_set::*;
 use super::device::*;
 use super::error::*;
 use super::fence::*;
@@ -56,7 +57,7 @@ pub struct GraphicsContext {
     base: BaseContext,
 }
 
-impl<'a> Device<'a> {
+impl Device<'_> {
     pub fn get_base_context(
         &self,
         context_pool: &mut ContextPool,
@@ -122,7 +123,7 @@ impl<'a> Device<'a> {
         &self,
         context_pool: &mut ContextPool,
     ) -> VulkanResult<ComputeContext> {
-        let base = self.get_base_context(context_pool, queues::GRAPHICS)?;
+        let base = self.get_base_context(context_pool, queues::COMPUTE)?;
         Ok(ComputeContext { base })
     }
 
@@ -216,7 +217,42 @@ pub trait TransferContextMethods: HasBaseContext {
     }
 }
 
-pub trait ComputeContextMethods: TransferContextMethods {}
+pub trait ComputeContextMethods: TransferContextMethods {
+    fn bind_uniform_set(
+        &self,
+        device: &Device,
+        descriptor: &DynamicBufferDescriptor,
+        offset: u32,
+        i_set: u32,
+    ) {
+        assert!(i_set == 1 || i_set == 2);
+        let base_context = self.base_context();
+
+        unsafe {
+            device.device.cmd_bind_descriptor_sets(
+                base_context.cmd,
+                vk::PipelineBindPoint::COMPUTE,
+                device.descriptors.pipeline_layout,
+                i_set,
+                &[descriptor.vkset],
+                &[offset],
+            );
+        }
+
+        if base_context.queue_type == queues::GRAPHICS {
+            unsafe {
+                device.device.cmd_bind_descriptor_sets(
+                    base_context.cmd,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    device.descriptors.pipeline_layout,
+                    i_set,
+                    &[descriptor.vkset],
+                    &[offset],
+                );
+            }
+        }
+    }
+}
 pub trait GraphicsContextMethods: ComputeContextMethods {
     fn begin_pass(
         &mut self,

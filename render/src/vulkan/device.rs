@@ -28,6 +28,7 @@ pub struct DeviceSpec<'a> {
 pub struct DeviceDescriptors {
     pub uniform_descriptor_pool: vk::DescriptorPool,
     pub uniform_descriptor_layout: vk::DescriptorSetLayout,
+    pub uniform_descriptor_sets: Vec<DynamicBufferDescriptor>,
     pub bindless_set: BindlessSet,
     pub pipeline_layout: vk::PipelineLayout,
 }
@@ -48,6 +49,7 @@ pub struct Device<'a> {
 }
 
 impl<'a> Device<'a> {
+    #[allow(clippy::collapsible_if)]
     pub fn new(instance: &'a Instance, spec: DeviceSpec<'a>) -> VulkanResult<Self> {
         let mut device_extensions = DynamicArray::<_, 8>::new();
         device_extensions.push(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
@@ -149,13 +151,16 @@ impl<'a> Device<'a> {
         };
 
         let uniform_descriptor_layout = DynamicBufferDescriptor::new_layout(&device)?;
-
         let pipeline_layout = {
             let push_constant_ranges = [vk::PushConstantRangeBuilder::new()
                 .stage_flags(vk::ShaderStageFlags::ALL)
                 .size(spec.push_constant_size as u32)];
 
-            let layouts = [bindless_set.vklayout, uniform_descriptor_layout];
+            let layouts = [
+                bindless_set.vklayout,
+                uniform_descriptor_layout,
+                uniform_descriptor_layout,
+            ];
 
             let pipeline_layout_info = vk::PipelineLayoutCreateInfoBuilder::new()
                 .set_layouts(&layouts)
@@ -182,6 +187,7 @@ impl<'a> Device<'a> {
             descriptors: DeviceDescriptors {
                 uniform_descriptor_pool,
                 uniform_descriptor_layout,
+                uniform_descriptor_sets: Vec::new(),
                 bindless_set,
                 pipeline_layout,
             },

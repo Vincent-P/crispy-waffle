@@ -8,6 +8,7 @@ pub struct DynamicArray<T, const CAPACITY: usize> {
 }
 
 impl<T, const CAPACITY: usize> DynamicArray<T, CAPACITY> {
+    #[allow(clippy::uninit_assumed_init)]
     pub fn new() -> Self {
         Self {
             array: unsafe { MaybeUninit::uninit().assume_init() },
@@ -46,8 +47,26 @@ impl<T, const CAPACITY: usize> DynamicArray<T, CAPACITY> {
         let len = self.len();
         unsafe { std::slice::from_raw_parts(self.as_ptr(), len) }
     }
+
+    pub fn resize(&mut self, new_length: usize, value: T)
+    where
+        T: Copy,
+    {
+        assert!(new_length < CAPACITY);
+        for i in self.size..new_length {
+            self.array[i] = value;
+        }
+        self.size = new_length;
+    }
 }
 
+impl<T, const CAPACITY: usize> Default for DynamicArray<T, CAPACITY> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// Index operator
 impl<T, const CAPACITY: usize> Index<usize> for DynamicArray<T, CAPACITY> {
     type Output = T;
     fn index(&self, index: usize) -> &Self::Output {
@@ -56,6 +75,7 @@ impl<T, const CAPACITY: usize> Index<usize> for DynamicArray<T, CAPACITY> {
     }
 }
 
+// Index operator returning mutable ref
 impl<T, const CAPACITY: usize> IndexMut<usize> for DynamicArray<T, CAPACITY> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         assert!(index < self.size);
@@ -63,6 +83,7 @@ impl<T, const CAPACITY: usize> IndexMut<usize> for DynamicArray<T, CAPACITY> {
     }
 }
 
+// Convert to slice with &dynarray
 impl<T, const CAPACITY: usize> Deref for DynamicArray<T, CAPACITY> {
     type Target = [T];
     fn deref(&self) -> &Self::Target {
@@ -70,6 +91,7 @@ impl<T, const CAPACITY: usize> Deref for DynamicArray<T, CAPACITY> {
     }
 }
 
+// Const iterator from &dynarray
 impl<'a, T, const CAPACITY: usize> IntoIterator for &'a DynamicArray<T, CAPACITY> {
     type Item = &'a T;
     type IntoIter = std::slice::Iter<'a, T>;
@@ -79,25 +101,23 @@ impl<'a, T, const CAPACITY: usize> IntoIterator for &'a DynamicArray<T, CAPACITY
     }
 }
 
+// Constructor from slice
 impl<T: Copy, const CAPACITY: usize> From<&[T]> for DynamicArray<T, CAPACITY> {
     fn from(slice: &[T]) -> Self {
         assert!(slice.len() < CAPACITY);
         let mut dynarray = Self::new();
-        for i in 0..slice.len() {
-            dynarray.array[i] = slice[i];
-        }
+        dynarray.array[..slice.len()].copy_from_slice(slice);
         dynarray.size = slice.len();
         dynarray
     }
 }
 
+// Constructor from array
 impl<T: Copy, const N: usize, const CAPACITY: usize> From<[T; N]> for DynamicArray<T, CAPACITY> {
     fn from(slice: [T; N]) -> Self {
         assert!(N < CAPACITY);
         let mut dynarray = Self::new();
-        for i in 0..slice.len() {
-            dynarray.array[i] = slice[i];
-        }
+        dynarray.array[..slice.len()].copy_from_slice(&slice);
         dynarray.size = slice.len();
         dynarray
     }
