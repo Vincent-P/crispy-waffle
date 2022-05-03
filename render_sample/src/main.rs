@@ -18,7 +18,11 @@ use render::{
     },
 };
 
+use drawer2d::{drawer::*, rect::*};
+
 const FRAME_QUEUE_LENGTH: usize = 2;
+static mut DRAWER_VERTEX_MEMORY: [u8; 64 << 20] = [0; 64 << 20];
+static mut DRAWER_INDEX_MEMORY: [u32; 8 << 20] = [0; 8 << 20];
 
 /*
 buffers
@@ -144,6 +148,26 @@ fn main() -> Result<()> {
         },
     )?;
 
+    let mut dynamic_vertex_buffer = RingBuffer::new(
+        &mut device,
+        RingBufferSpec {
+            usages: vk::BufferUsageFlags::STORAGE_BUFFER,
+            frame_queue_length: FRAME_QUEUE_LENGTH,
+            buffer_size: 128 << 20,
+        },
+    )?;
+
+    let mut dynamic_index_buffer = RingBuffer::new(
+        &mut device,
+        RingBufferSpec {
+            usages: vk::BufferUsageFlags::UNIFORM_BUFFER,
+            frame_queue_length: FRAME_QUEUE_LENGTH,
+            buffer_size: 32 << 20,
+        },
+    )?;
+
+    let mut drawer = unsafe { Drawer::new(&mut DRAWER_VERTEX_MEMORY, &mut DRAWER_INDEX_MEMORY) };
+
     event_loop.run_return(|event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
@@ -177,6 +201,37 @@ fn main() -> Result<()> {
                 }
                 outdated = device.acquire_next_swapchain(&mut surface)?;
             }
+
+            // Test
+            drawer.clear();
+            drawer.draw_colored_rect(
+                Rect {
+                    pos: [35.0, 35.0],
+                    size: [50.0, 5.0],
+                },
+                0,
+                ColorU32(0xFFFF00FF),
+            );
+            {
+                let vertices = drawer.get_vertex_buffer();
+                let (slice, _) = dynamic_vertex_buffer.allocate(vertices.len(), 256);
+                unsafe {
+                    (*slice).copy_from_slice(vertices);
+                }
+            }
+            {
+                let indices = drawer.get_index_buffer();
+                let indices_byte_length = indices.len() * std::mem::size_of::<u32>();
+                let (slice, _) = dynamic_index_buffer.allocate(indices_byte_length, 256);
+                unsafe {
+                    let indices = std::slice::from_raw_parts(
+                        indices.as_ptr() as *const u8,
+                        indices_byte_length,
+                    );
+                    (*slice).copy_from_slice(indices);
+                }
+            }
+            // Test fin
 
             device.update_bindless_set();
 

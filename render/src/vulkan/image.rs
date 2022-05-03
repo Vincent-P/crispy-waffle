@@ -150,7 +150,7 @@ impl Device<'_> {
             vk::ImageType::_3D => vk::ImageViewType::_3D,
             _ => unreachable!(),
         };
-        let mut full_view =
+        let full_view =
             self.create_image_view(vkimage, *full_range, spec.format, full_view_type)?;
 
         let image_handle = self.images.add(Image {

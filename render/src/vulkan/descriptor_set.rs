@@ -162,8 +162,6 @@ impl BindlessSet {
         }
     }
 
-    pub fn update(&mut self, device: &Device) {}
-
     pub fn bind_sampler_image(&mut self, image_handle: Handle<Image>) -> usize {
         let new_index = self.free_lists[PER_SAMPLER].pop().unwrap();
         assert!(new_index != !0usize);

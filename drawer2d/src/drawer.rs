@@ -1,8 +1,9 @@
 use crate::rect::Rect;
+use std::mem::size_of;
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
-pub struct ColorU32(u32);
+pub struct ColorU32(pub u32);
 
 impl ColorU32 {
     pub fn get_a(self) -> u32 {
@@ -28,12 +29,12 @@ pub struct ColoredRect {
 }
 
 #[repr(C)]
-enum PrimitiveType {
+pub enum PrimitiveType {
     ColorRect = 0,
     TexturedRect = 1,
     Clip = 2,
-    SdfRoundRectangle = (0b100000 + 0),
-    SdfCircle = (0b100000 + 1),
+    SdfRoundRectangle = 0b100000,
+    SdfCircle = 0b100001,
 }
 
 // 0b11000000_00000000_00000000_00000000
@@ -57,12 +58,12 @@ pub struct PrimitiveIndex(u32);
 // Bitfields
 impl Default for PrimitiveIndex {
     fn default() -> Self {
-	Self::new()
+        Self::new()
     }
 }
 impl PrimitiveIndex {
     pub fn new() -> Self {
-	Self(0)
+        Self(0)
     }
 
     pub fn get_corner(&self) -> u32 {
@@ -70,7 +71,7 @@ impl PrimitiveIndex {
     }
 
     pub fn corner(self, i_corner: u32) -> Self {
-        assert!(i_corner < CRNR_MAX);
+        assert!(i_corner <= CRNR_MAX);
         let mut bits = self.0;
         bits &= !CRNR_MASK;
         bits |= i_corner << CRNR_OFFSET;
@@ -81,8 +82,9 @@ impl PrimitiveIndex {
         (self.0 & TYPE_MASK) >> TYPE_OFFSET
     }
 
-    pub fn i_type(self, i_type: u32) -> Self {
-        assert!(i_type < TYPE_MAX);
+    pub fn i_type(self, i_type: PrimitiveType) -> Self {
+        let i_type = i_type as u32;
+        assert!(i_type <= TYPE_MAX);
         let mut bits = self.0;
         bits &= !TYPE_MASK;
         bits |= i_type << TYPE_OFFSET;
@@ -94,7 +96,7 @@ impl PrimitiveIndex {
     }
 
     pub fn index(self, index: usize) -> Self {
-        assert!((index as u32) < INDX_MAX);
+        assert!((index as u32) <= INDX_MAX);
         let mut bits = self.0;
         bits &= !INDX_MASK;
         bits |= (index as u32) << INDX_OFFSET;
@@ -119,19 +121,24 @@ impl<'a> Drawer<'a> {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.vertex_byte_offset = 0;
+        self.index_offset = 0;
+    }
+
     pub fn draw_colored_rect(&mut self, rect: Rect, i_clip_rect: u32, color: ColorU32) {
         if color.get_a() == 0 {
             return;
         }
 
-        let misalignment = self.vertex_byte_offset % std::mem::size_of::<ColoredRect>();
+        let misalignment = self.vertex_byte_offset % size_of::<ColoredRect>();
         if misalignment != 0 {
-            self.vertex_byte_offset += std::mem::size_of::<ColoredRect>() - misalignment;
+            self.vertex_byte_offset += size_of::<ColoredRect>() - misalignment;
         }
 
-        assert!(self.vertex_byte_offset % std::mem::size_of::<ColoredRect>() == 0);
+        assert!(self.vertex_byte_offset % size_of::<ColoredRect>() == 0);
 
-        let i_rect = self.vertex_byte_offset / std::mem::size_of::<ColoredRect>();
+        let i_rect = self.vertex_byte_offset / size_of::<ColoredRect>();
 
         let vertices = unsafe {
             std::slice::from_raw_parts_mut(
@@ -147,14 +154,28 @@ impl<'a> Drawer<'a> {
             )
         };
 
-	vertices[0] = ColoredRect {rect, color, i_clip_rect, padding: [0, 0]};
-	self.vertex_byte_offset += std::mem::size_of::<ColoredRect>();
+        vertices[0] = ColoredRect {
+            rect,
+            color,
+            i_clip_rect,
+            padding: [0, 0],
+        };
+        self.vertex_byte_offset += size_of::<ColoredRect>();
 
-	indices[0] = PrimitiveIndex::new().index(i_rect).corner(0).i_type(PrimitiveType::ColorRect as u32);
-	indices[1] = PrimitiveIndex::new().index(i_rect).corner(1).i_type(PrimitiveType::ColorRect as u32);
-	indices[2] = PrimitiveIndex::new().index(i_rect).corner(2).i_type(PrimitiveType::ColorRect as u32);
-	indices[3] = PrimitiveIndex::new().index(i_rect).corner(2).i_type(PrimitiveType::ColorRect as u32);
-	indices[4] = PrimitiveIndex::new().index(i_rect).corner(3).i_type(PrimitiveType::ColorRect as u32);
-	indices[5] = PrimitiveIndex::new().index(i_rect).corner(0).i_type(PrimitiveType::ColorRect as u32);
+        const CORNERS: [u32; 6] = [0, 1, 2, 2, 3, 0];
+        for i_corner in 0..CORNERS.len() {
+            indices[i_corner] = PrimitiveIndex::new()
+                .index(i_rect)
+                .corner(CORNERS[i_corner])
+                .i_type(PrimitiveType::ColorRect);
+        }
+    }
+
+    pub fn get_vertex_buffer(&self) -> &[u8] {
+        self.vertex_buffer
+    }
+
+    pub fn get_index_buffer(&self) -> &[u32] {
+        self.index_buffer
     }
 }

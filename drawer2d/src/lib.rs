@@ -1,2 +1,2 @@
-pub mod rect;
 pub mod drawer;
+pub mod rect;

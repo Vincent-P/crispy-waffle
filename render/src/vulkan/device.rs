@@ -202,7 +202,7 @@ impl<'a> Device<'a> {
         };
 
         // Empty image for bindless clear #0
-        device.create_image(Default::default());
+        device.create_image(Default::default()).unwrap();
 
         Ok(device)
     }

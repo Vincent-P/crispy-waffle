@@ -8,5 +8,6 @@ edition = "2021"
 [dependencies]
 exo = {path= "../exo"}
 render = {path= "../render"}
+drawer2d = {path= "../drawer2d"}
 winit = "0.26.1"
 anyhow = "1.0"

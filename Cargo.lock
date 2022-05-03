@@ -676,6 +676,7 @@ name = "render_sample"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "drawer2d",
  "exo",
  "render",
  "winit",
