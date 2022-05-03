@@ -3,4 +3,5 @@ members = [
     "exo",
     "render_sample",
     "render",
+    "drawer2d"
 ]
