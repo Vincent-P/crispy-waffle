@@ -161,6 +161,9 @@ fn main() -> Result<()> {
         *control_flow = ControlFlow::Wait;
 
         let mut draw = || -> VulkanResult<_> {
+            optick::next_frame();
+            optick::tag!("frame", i_frame as u32);
+
             let current_frame = i_frame % FRAME_QUEUE_LENGTH;
             let context_pool = &mut context_pools[current_frame];
 
@@ -174,6 +177,7 @@ fn main() -> Result<()> {
             device.reset_context_pool(context_pool)?;
             let mut outdated = device.acquire_next_swapchain(&mut surface)?;
             while outdated {
+                optick::event!("resize");
                 device.wait_idle()?;
                 surface.recreate_swapchain(&instance, &mut device)?;
 
@@ -192,160 +196,172 @@ fn main() -> Result<()> {
             }
 
             // Test
-            drawer.clear();
-            drawer.draw_colored_rect(
-                Rect {
-                    pos: [35.0, 35.0],
-                    size: [50.0, 50.0],
-                },
-                0,
-                ColorU32(0xFF0000FF),
-            );
-            drawer.draw_colored_rect(
-                Rect {
-                    pos: [50.0, 50.0],
-                    size: [250.0, 250.0],
-                },
-                0,
-                ColorU32(0xFF00FF00),
-            );
-            drawer.draw_colored_rect(
-                Rect {
-                    pos: [250.0, 250.0],
-                    size: [150.0, 150.0],
-                },
-                0,
-                ColorU32(0xFFFF0000),
-            );
+            {
+                optick::event!("draw");
+                drawer.clear();
+                drawer.draw_colored_rect(
+                    Rect {
+                        pos: [35.0, 35.0],
+                        size: [50.0, 50.0],
+                    },
+                    0,
+                    ColorU32(0xFF0000FF),
+                );
+                drawer.draw_colored_rect(
+                    Rect {
+                        pos: [50.0, 50.0],
+                        size: [250.0, 250.0],
+                    },
+                    0,
+                    ColorU32(0xFF00FF00),
+                );
+                drawer.draw_colored_rect(
+                    Rect {
+                        pos: [250.0, 250.0],
+                        size: [150.0, 150.0],
+                    },
+                    0,
+                    ColorU32(0xFFFF0000),
+                );
+            }
             // Test fin
 
             device.update_bindless_set();
 
             let mut ctx = device.get_graphics_context(context_pool)?;
-            ctx.begin(&device)?;
-            ctx.wait_for_acquired(&surface, vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT);
-            ctx.barrier(
-                &mut device,
-                surface.images[surface.current_image as usize],
-                vulkan::ImageState::ColorAttachment,
-            );
-
-            let options =
-                bindings::bind_shader_options(&mut device, &mut uniform_buffer, &ctx, 16)?;
-            unsafe {
-                let float_options = std::slice::from_raw_parts_mut(
-                    (*options).as_ptr() as *mut f32,
-                    (*options).len() / size_of::<f32>(),
-                );
-                float_options[0] = 1.0;
-                float_options[1] = 1.0;
-                float_options[2] = 0.0;
-                float_options[3] = 1.0;
-            }
-
-            ctx.begin_pass(
-                &mut device,
-                framebuffers[surface.current_image as usize],
-                &[vulkan::LoadOp::ClearColor(
-                    vulkan::ClearColorValue::Float32([0.0, 0.0, 0.0, 1.0]),
-                )],
-            )?;
-            ctx.set_viewport(
-                &device,
-                vk::ViewportBuilder::new()
-                    .width(surface.size[0] as f32)
-                    .height(surface.size[1] as f32)
-                    .min_depth(0.0)
-                    .max_depth(1.0),
-            );
-            ctx.set_scissor(
-                &device,
-                vk::Rect2DBuilder::new().extent(
-                    *vk::Extent2DBuilder::new()
-                        .width(surface.size[0] as u32)
-                        .height(surface.size[1] as u32),
-                ),
-            );
             {
-                let vertices = drawer.get_vertex_buffer();
-                let (slice, vertices_offset) = dynamic_vertex_buffer.allocate(vertices.len(), 256);
-                unsafe {
-                    (*slice).copy_from_slice(vertices);
-                }
-                let indices = drawer.get_index_buffer();
-                let indices_byte_length = indices.len() * size_of::<u32>();
-                let (slice, indices_offset) =
-                    dynamic_index_buffer.allocate(indices_byte_length, 256);
-                unsafe {
-                    let indices = std::slice::from_raw_parts(
-                        indices.as_ptr() as *const u8,
-                        indices_byte_length,
-                    );
-                    (*slice).copy_from_slice(indices);
-                }
-                #[repr(C, packed)]
-                struct Options {
-                    pub scale: [f32; 2],
-                    pub translation: [f32; 2],
-                    pub vertices_descriptor_index: u32,
-                    pub primitive_bytes_offset: u32,
-                }
-
-                let options = bindings::bind_shader_options(
+                optick::event!("command recording");
+                ctx.begin(&device)?;
+                ctx.wait_for_acquired(&surface, vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT);
+                ctx.barrier(
                     &mut device,
-                    &mut uniform_buffer,
-                    &ctx,
-                    size_of::<Options>(),
-                )?;
-                unsafe {
-                    let p_options =
-                        std::slice::from_raw_parts_mut((*options).as_ptr() as *mut Options, 1);
-                    p_options[0] = Options {
-                        scale: [
-                            2.0 / (surface.size[0] as f32),
-                            2.0 / (surface.size[1] as f32),
-                        ],
-                        translation: [-1.0, -1.0],
-                        vertices_descriptor_index: device
-                            .buffers
-                            .get(dynamic_vertex_buffer.buffer)
-                            .storage_idx,
-                        primitive_bytes_offset: vertices_offset,
-                    };
-                }
-                let indices_offset = indices_offset as usize;
-                assert!(indices_offset % size_of::<u32>() == 0);
-                let index_offset = indices_offset / size_of::<u32>();
-                ctx.bind_index_buffer(
-                    &device,
-                    dynamic_index_buffer.buffer,
-                    vk::IndexType::UINT32,
-                    index_offset,
+                    surface.images[surface.current_image as usize],
+                    vulkan::ImageState::ColorAttachment,
                 );
-            }
-            ctx.bind_graphics_pipeline(&device, ui_program, 0);
-            ctx.draw_indexed(
-                &device,
-                vulkan::DrawIndexedOptions {
-                    vertex_count: drawer.get_index_offset() as u32,
-                    ..Default::default()
-                },
-            );
 
-            ctx.end_pass(&device);
-            ctx.barrier(
-                &mut device,
-                surface.images[surface.current_image as usize],
-                vulkan::ImageState::Present,
-            );
-            ctx.end(&device)?;
-            ctx.prepare_present(&surface);
-            device.submit(&ctx, &[&fence], &[(i_frame as u64) + 1])?;
-            i_frame += 1;
-            let _outdated = device.present(&ctx, &surface)?;
+                let options =
+                    bindings::bind_shader_options(&mut device, &mut uniform_buffer, &ctx, 16)?;
+                unsafe {
+                    let float_options = std::slice::from_raw_parts_mut(
+                        (*options).as_ptr() as *mut f32,
+                        (*options).len() / size_of::<f32>(),
+                    );
+                    float_options[0] = 1.0;
+                    float_options[1] = 1.0;
+                    float_options[2] = 0.0;
+                    float_options[3] = 1.0;
+                }
+
+                ctx.begin_pass(
+                    &mut device,
+                    framebuffers[surface.current_image as usize],
+                    &[vulkan::LoadOp::ClearColor(
+                        vulkan::ClearColorValue::Float32([0.0, 0.0, 0.0, 1.0]),
+                    )],
+                )?;
+                ctx.set_viewport(
+                    &device,
+                    vk::ViewportBuilder::new()
+                        .width(surface.size[0] as f32)
+                        .height(surface.size[1] as f32)
+                        .min_depth(0.0)
+                        .max_depth(1.0),
+                );
+                ctx.set_scissor(
+                    &device,
+                    vk::Rect2DBuilder::new().extent(
+                        *vk::Extent2DBuilder::new()
+                            .width(surface.size[0] as u32)
+                            .height(surface.size[1] as u32),
+                    ),
+                );
+                {
+                    let vertices = drawer.get_vertex_buffer();
+                    let (slice, vertices_offset) =
+                        dynamic_vertex_buffer.allocate(vertices.len(), 256);
+                    unsafe {
+                        (*slice).copy_from_slice(vertices);
+                    }
+                    let indices = drawer.get_index_buffer();
+                    let indices_byte_length = indices.len() * size_of::<u32>();
+                    let (slice, indices_offset) =
+                        dynamic_index_buffer.allocate(indices_byte_length, 256);
+                    unsafe {
+                        let indices = std::slice::from_raw_parts(
+                            indices.as_ptr() as *const u8,
+                            indices_byte_length,
+                        );
+                        (*slice).copy_from_slice(indices);
+                    }
+                    #[repr(C, packed)]
+                    struct Options {
+                        pub scale: [f32; 2],
+                        pub translation: [f32; 2],
+                        pub vertices_descriptor_index: u32,
+                        pub primitive_bytes_offset: u32,
+                    }
+
+                    let options = bindings::bind_shader_options(
+                        &mut device,
+                        &mut uniform_buffer,
+                        &ctx,
+                        size_of::<Options>(),
+                    )?;
+                    unsafe {
+                        let p_options =
+                            std::slice::from_raw_parts_mut((*options).as_ptr() as *mut Options, 1);
+                        p_options[0] = Options {
+                            scale: [
+                                2.0 / (surface.size[0] as f32),
+                                2.0 / (surface.size[1] as f32),
+                            ],
+                            translation: [-1.0, -1.0],
+                            vertices_descriptor_index: device
+                                .buffers
+                                .get(dynamic_vertex_buffer.buffer)
+                                .storage_idx,
+                            primitive_bytes_offset: vertices_offset,
+                        };
+                    }
+                    let indices_offset = indices_offset as usize;
+                    assert!(indices_offset % size_of::<u32>() == 0);
+                    let index_offset = indices_offset / size_of::<u32>();
+                    ctx.bind_index_buffer(
+                        &device,
+                        dynamic_index_buffer.buffer,
+                        vk::IndexType::UINT32,
+                        index_offset,
+                    );
+                }
+                ctx.bind_graphics_pipeline(&device, ui_program, 0);
+                ctx.draw_indexed(
+                    &device,
+                    vulkan::DrawIndexedOptions {
+                        vertex_count: drawer.get_index_offset() as u32,
+                        ..Default::default()
+                    },
+                );
+
+                ctx.end_pass(&device);
+                ctx.barrier(
+                    &mut device,
+                    surface.images[surface.current_image as usize],
+                    vulkan::ImageState::Present,
+                );
+                ctx.end(&device)?;
+            }
+            {
+                optick::event!("submit and present");
+                ctx.prepare_present(&surface);
+                device.submit(&ctx, &[&fence], &[(i_frame as u64) + 1])?;
+                i_frame += 1;
+                let _outdated = device.present(&ctx, &surface)?;
+            }
 
             Ok(())
         };
+
+        optick::event!("window event");
 
         match event {
             Event::WindowEvent {
