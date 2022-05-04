@@ -169,6 +169,7 @@ impl<'a> Drawer<'a> {
                 .corner(CORNERS[i_corner])
                 .i_type(PrimitiveType::ColorRect);
         }
+        self.index_offset += CORNERS.len();
     }
 
     pub fn get_vertex_buffer(&self) -> &[u8] {
@@ -177,5 +178,9 @@ impl<'a> Drawer<'a> {
 
     pub fn get_index_buffer(&self) -> &[u32] {
         self.index_buffer
+    }
+
+    pub fn get_index_offset(&self) -> usize {
+        self.index_offset
     }
 }

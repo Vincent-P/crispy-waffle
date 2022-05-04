@@ -1,6 +1,6 @@
 use anyhow::Result;
 use exo::{dynamic_array::DynamicArray, pool::Handle};
-use std::{ffi::CStr, os::raw::c_char, path::PathBuf};
+use std::{ffi::CStr, mem::size_of, os::raw::c_char, path::PathBuf};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -24,27 +24,16 @@ const FRAME_QUEUE_LENGTH: usize = 2;
 static mut DRAWER_VERTEX_MEMORY: [u8; 64 << 20] = [0; 64 << 20];
 static mut DRAWER_INDEX_MEMORY: [u32; 8 << 20] = [0; 8 << 20];
 
-/*
-buffers
-ring buffer
-dynamic uniform buffer
-bind descriptors with dynamic offset
-draw2d
-ui
-
-crates:
-bytemuck?
-allsorts
-ab_glyph
-*/
-
 fn main() -> Result<()> {
     let mut shader_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
     shader_dir.push("dummy_file");
     println!("Shaders directory: {:?}", &shader_dir);
 
     let mut event_loop = EventLoop::new();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let window = WindowBuilder::new()
+        .with_title("Cripsy Waffle")
+        .build(&event_loop)
+        .unwrap();
 
     let instance = vulkan::Instance::new(vulkan::InstanceSpec::default())?;
     let mut physical_devices = instance.get_physical_devices()?;
@@ -87,12 +76,12 @@ fn main() -> Result<()> {
 
     let mut surface = vulkan::Surface::new(&instance, &mut device, &window)?;
 
-    let base_gfx_state = vulkan::GraphicsState {
+    let ui_gfx_state = vulkan::GraphicsState {
         vertex_shader: device
-            .create_shader(shader_dir.with_file_name("base.vert.spv"))
+            .create_shader(shader_dir.with_file_name("ui.vert.spv"))
             .unwrap(),
         fragment_shader: device
-            .create_shader(shader_dir.with_file_name("base.frag.spv"))
+            .create_shader(shader_dir.with_file_name("ui.frag.spv"))
             .unwrap(),
         attachments_format: vulkan::FramebufferFormat {
             attachment_formats: DynamicArray::from([surface.format.format]),
@@ -100,9 +89,9 @@ fn main() -> Result<()> {
         },
     };
 
-    let base_program = device.create_graphics_program(base_gfx_state)?;
+    let ui_program = device.create_graphics_program(ui_gfx_state)?;
     device.compile_graphics_program(
-        base_program,
+        ui_program,
         vulkan::RenderState {
             depth: vulkan::DepthState {
                 test: None,
@@ -160,7 +149,7 @@ fn main() -> Result<()> {
     let mut dynamic_index_buffer = RingBuffer::new(
         &mut device,
         RingBufferSpec {
-            usages: vk::BufferUsageFlags::UNIFORM_BUFFER,
+            usages: vk::BufferUsageFlags::INDEX_BUFFER,
             frame_queue_length: FRAME_QUEUE_LENGTH,
             buffer_size: 32 << 20,
         },
@@ -207,30 +196,27 @@ fn main() -> Result<()> {
             drawer.draw_colored_rect(
                 Rect {
                     pos: [35.0, 35.0],
-                    size: [50.0, 5.0],
+                    size: [50.0, 50.0],
                 },
                 0,
-                ColorU32(0xFFFF00FF),
+                ColorU32(0xFF0000FF),
             );
-            {
-                let vertices = drawer.get_vertex_buffer();
-                let (slice, _) = dynamic_vertex_buffer.allocate(vertices.len(), 256);
-                unsafe {
-                    (*slice).copy_from_slice(vertices);
-                }
-            }
-            {
-                let indices = drawer.get_index_buffer();
-                let indices_byte_length = indices.len() * std::mem::size_of::<u32>();
-                let (slice, _) = dynamic_index_buffer.allocate(indices_byte_length, 256);
-                unsafe {
-                    let indices = std::slice::from_raw_parts(
-                        indices.as_ptr() as *const u8,
-                        indices_byte_length,
-                    );
-                    (*slice).copy_from_slice(indices);
-                }
-            }
+            drawer.draw_colored_rect(
+                Rect {
+                    pos: [50.0, 50.0],
+                    size: [250.0, 250.0],
+                },
+                0,
+                ColorU32(0xFF00FF00),
+            );
+            drawer.draw_colored_rect(
+                Rect {
+                    pos: [250.0, 250.0],
+                    size: [150.0, 150.0],
+                },
+                0,
+                ColorU32(0xFFFF0000),
+            );
             // Test fin
 
             device.update_bindless_set();
@@ -249,7 +235,7 @@ fn main() -> Result<()> {
             unsafe {
                 let float_options = std::slice::from_raw_parts_mut(
                     (*options).as_ptr() as *mut f32,
-                    (*options).len() / std::mem::size_of::<f32>(),
+                    (*options).len() / size_of::<f32>(),
                 );
                 float_options[0] = 1.0;
                 float_options[1] = 1.0;
@@ -261,7 +247,7 @@ fn main() -> Result<()> {
                 &mut device,
                 framebuffers[surface.current_image as usize],
                 &[vulkan::LoadOp::ClearColor(
-                    vulkan::ClearColorValue::Float32([1.0, 0.0, 1.0, 1.0]),
+                    vulkan::ClearColorValue::Float32([0.0, 0.0, 0.0, 1.0]),
                 )],
             )?;
             ctx.set_viewport(
@@ -280,14 +266,72 @@ fn main() -> Result<()> {
                         .height(surface.size[1] as u32),
                 ),
             );
-            ctx.bind_graphics_pipeline(&device, base_program, 0);
-            ctx.draw(
+            {
+                let vertices = drawer.get_vertex_buffer();
+                let (slice, vertices_offset) = dynamic_vertex_buffer.allocate(vertices.len(), 256);
+                unsafe {
+                    (*slice).copy_from_slice(vertices);
+                }
+                let indices = drawer.get_index_buffer();
+                let indices_byte_length = indices.len() * size_of::<u32>();
+                let (slice, indices_offset) =
+                    dynamic_index_buffer.allocate(indices_byte_length, 256);
+                unsafe {
+                    let indices = std::slice::from_raw_parts(
+                        indices.as_ptr() as *const u8,
+                        indices_byte_length,
+                    );
+                    (*slice).copy_from_slice(indices);
+                }
+                #[repr(C, packed)]
+                struct Options {
+                    pub scale: [f32; 2],
+                    pub translation: [f32; 2],
+                    pub vertices_descriptor_index: u32,
+                    pub primitive_bytes_offset: u32,
+                }
+
+                let options = bindings::bind_shader_options(
+                    &mut device,
+                    &mut uniform_buffer,
+                    &ctx,
+                    size_of::<Options>(),
+                )?;
+                unsafe {
+                    let p_options =
+                        std::slice::from_raw_parts_mut((*options).as_ptr() as *mut Options, 1);
+                    p_options[0] = Options {
+                        scale: [
+                            2.0 / (surface.size[0] as f32),
+                            2.0 / (surface.size[1] as f32),
+                        ],
+                        translation: [-1.0, -1.0],
+                        vertices_descriptor_index: device
+                            .buffers
+                            .get(dynamic_vertex_buffer.buffer)
+                            .storage_idx,
+                        primitive_bytes_offset: vertices_offset,
+                    };
+                }
+                let indices_offset = indices_offset as usize;
+                assert!(indices_offset % size_of::<u32>() == 0);
+                let index_offset = indices_offset / size_of::<u32>();
+                ctx.bind_index_buffer(
+                    &device,
+                    dynamic_index_buffer.buffer,
+                    vk::IndexType::UINT32,
+                    index_offset,
+                );
+            }
+            ctx.bind_graphics_pipeline(&device, ui_program, 0);
+            ctx.draw_indexed(
                 &device,
-                vulkan::DrawOptions {
-                    vertex_count: 6,
+                vulkan::DrawIndexedOptions {
+                    vertex_count: drawer.get_index_offset() as u32,
                     ..Default::default()
                 },
             );
+
             ctx.end_pass(&device);
             ctx.barrier(
                 &mut device,
@@ -344,9 +388,9 @@ fn main() -> Result<()> {
 
     surface.destroy(&instance, &mut device);
 
-    device.destroy_program(base_program);
-    // device.destroy_shader(base_vertex);
-    // device.destroy_shader(base_frag);
+    device.destroy_program(ui_program);
+    // device.destroy_shader(ui_vertex);
+    // device.destroy_shader(ui_frag);
 
     device.destroy();
     instance.destroy();

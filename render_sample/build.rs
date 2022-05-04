@@ -29,4 +29,6 @@ fn main() {
 
     compile_shader("base.vert", &out_dir);
     compile_shader("base.frag", &out_dir);
+    compile_shader("ui.vert", &out_dir);
+    compile_shader("ui.frag", &out_dir);
 }

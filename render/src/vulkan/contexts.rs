@@ -1,3 +1,4 @@
+use super::buffer::*;
 use super::context_pool::*;
 use super::descriptor_set::*;
 use super::device::*;
@@ -39,6 +40,26 @@ impl Default for DrawOptions {
         Self {
             vertex_count: 0,
             instance_count: 1,
+            vertex_offset: 0,
+            instance_offset: 0,
+        }
+    }
+}
+
+pub struct DrawIndexedOptions {
+    pub vertex_count: u32,
+    pub instance_count: u32,
+    pub index_offset: u32,
+    pub vertex_offset: u32,
+    pub instance_offset: u32,
+}
+
+impl Default for DrawIndexedOptions {
+    fn default() -> Self {
+        Self {
+            vertex_count: 0,
+            instance_count: 1,
+            index_offset: 0,
             vertex_offset: 0,
             instance_offset: 0,
         }
@@ -362,6 +383,26 @@ pub trait GraphicsContextMethods: ComputeContextMethods {
                 .cmd_set_scissor(base_context.cmd, 0, &scissors);
         }
     }
+
+    fn bind_index_buffer(
+        &self,
+        device: &Device,
+        buffer_handle: Handle<Buffer>,
+        index_type: vk::IndexType,
+        offset: usize,
+    ) {
+        let base_context = self.base_context();
+        let buffer = device.buffers.get(buffer_handle);
+        unsafe {
+            device.device.cmd_bind_index_buffer(
+                base_context.cmd,
+                buffer.vkhandle,
+                offset as u64,
+                index_type,
+            );
+        }
+    }
+
     fn draw(&self, device: &Device, draw_options: DrawOptions) {
         let base_context = self.base_context();
         unsafe {
@@ -370,6 +411,20 @@ pub trait GraphicsContextMethods: ComputeContextMethods {
                 draw_options.vertex_count,
                 draw_options.instance_count,
                 draw_options.vertex_offset,
+                draw_options.instance_offset,
+            );
+        }
+    }
+
+    fn draw_indexed(&self, device: &Device, draw_options: DrawIndexedOptions) {
+        let base_context = self.base_context();
+        unsafe {
+            device.device.cmd_draw_indexed(
+                base_context.cmd,
+                draw_options.vertex_count,
+                draw_options.instance_count,
+                draw_options.index_offset,
+                (draw_options.vertex_offset).try_into().unwrap(),
                 draw_options.instance_offset,
             );
         }

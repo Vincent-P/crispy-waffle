@@ -28,10 +28,13 @@ pub struct Buffer {
     pub memory_block: Option<gpu_alloc::MemoryBlock<vk::DeviceMemory>>,
     pub spec: BufferSpec,
     pub mapped_ptr: *mut u8,
+    pub storage_idx: u32,
 }
 
 impl Device<'_> {
     pub fn create_buffer(&mut self, spec: BufferSpec) -> VulkanResult<Handle<Buffer>> {
+        let is_storage = spec.usages.contains(vk::BufferUsageFlags::STORAGE_BUFFER);
+
         let buffer_info = vk::BufferCreateInfoBuilder::new()
             .usage(spec.usages)
             .size(spec.size as u64)
@@ -58,12 +61,22 @@ impl Device<'_> {
                 .result()?;
         }
 
-        Ok(self.buffers.add(Buffer {
+        let buffer_handle = self.buffers.add(Buffer {
             vkhandle: vkbuffer,
             memory_block: Some(memory_block),
             spec,
             mapped_ptr: std::ptr::null_mut(),
-        }))
+            storage_idx: 0,
+        });
+
+        if is_storage {
+            self.buffers.get_mut(buffer_handle).storage_idx =
+                self.descriptors
+                    .bindless_set
+                    .bind_storage_buffer(buffer_handle) as u32;
+        }
+
+        Ok(buffer_handle)
     }
 
     pub fn map_buffer(&mut self, buffer_handle: Handle<Buffer>) -> *mut [u8] {

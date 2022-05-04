@@ -179,6 +179,24 @@ impl BindlessSet {
     pub fn get_sampler_image(&self, image_index: usize) -> Handle<Image> {
         self.sampler_images[image_index]
     }
+
+    pub fn bind_storage_buffer(&mut self, buffer_handle: Handle<Buffer>) -> usize {
+        let new_index = self.free_lists[PER_BUFFER].pop().unwrap();
+        assert!(new_index != !0usize);
+        self.storage_buffers[new_index] = buffer_handle;
+        self.pending_binds[PER_BUFFER].push(new_index);
+        new_index
+    }
+
+    pub fn unbind_storage_buffer(&mut self, buffer_index: usize) {
+        self.storage_buffers[buffer_index] = Handle::invalid();
+        self.free_lists[PER_BUFFER].push(buffer_index);
+        self.pending_unbinds[PER_BUFFER].push(buffer_index);
+    }
+
+    pub fn get_storage_buffer(&self, buffer_index: usize) -> Handle<Buffer> {
+        self.storage_buffers[buffer_index]
+    }
 }
 
 impl DynamicBufferDescriptor {
