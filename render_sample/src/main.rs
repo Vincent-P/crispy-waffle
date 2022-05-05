@@ -21,6 +21,53 @@ use render::{
 
 use drawer2d::{drawer::*, rect::*};
 
+mod profile {
+    #[cfg(feature = "optick")]
+    pub fn init() {}
+
+    #[cfg(feature = "optick")]
+    pub fn next_frame() {
+        optick::next_frame();
+    }
+
+    #[cfg(feature = "optick")]
+    macro_rules! scope {
+        ($name:expr) => {
+            optick::event!($name);
+        };
+    }
+    #[cfg(feature = "tracy")]
+    pub fn init() {
+        tracy_client::Client::start();
+    }
+
+    #[cfg(feature = "tracy")]
+    pub fn next_frame() {
+        tracy_client::Client::running().unwrap().frame_mark();
+    }
+
+    #[cfg(feature = "tracy")]
+    macro_rules! scope {
+        ($name:expr) => {
+            let _span = tracy_client::span!($name);
+        };
+    }
+
+    #[cfg(not(any(feature = "optick", feature = "tracy",)))]
+    pub fn init() {}
+
+    #[cfg(not(any(feature = "optick", feature = "tracy",)))]
+    pub fn next_frame() {}
+
+    #[cfg(not(any(feature = "optick", feature = "tracy",)))]
+    macro_rules! scope {
+        ($name:expr) => {};
+        ($name:expr, $data:expr) => {};
+    }
+
+    pub(crate) use scope;
+}
+
 const FRAME_QUEUE_LENGTH: usize = 2;
 static mut DRAWER_VERTEX_MEMORY: [u8; 64 << 20] = [0; 64 << 20];
 static mut DRAWER_INDEX_MEMORY: [u32; 8 << 20] = [0; 8 << 20];
@@ -208,8 +255,7 @@ impl Renderer {
     }
 
     pub fn draw(&mut self, drawer: Option<&Drawer>) -> VulkanResult<()> {
-        optick::next_frame();
-        optick::tag!("frame", self.i_frame as u32);
+        profile::next_frame();
 
         let current_frame = self.i_frame % FRAME_QUEUE_LENGTH;
         let context_pool = &mut self.context_pools[current_frame];
@@ -224,7 +270,7 @@ impl Renderer {
         self.device.reset_context_pool(context_pool)?;
         let mut outdated = self.device.acquire_next_swapchain(&mut self.surface)?;
         while outdated {
-            optick::event!("resize");
+            profile::scope!("resize");
             self.device.wait_idle()?;
             self.surface.recreate_swapchain(
                 &self.instance,
@@ -250,7 +296,7 @@ impl Renderer {
 
         let mut ctx = self.device.get_graphics_context(context_pool)?;
         {
-            optick::event!("command recording");
+            profile::scope!("command recording");
             ctx.begin(&self.device)?;
             ctx.wait_for_acquired(
                 &self.surface,
@@ -285,22 +331,24 @@ impl Renderer {
                 ),
             );
             if let Some(drawer) = drawer {
-                let vertices = drawer.get_vertex_buffer();
+                let vertices = drawer.get_vertices();
                 let (slice, vertices_offset) =
                     self.dynamic_vertex_buffer.allocate(vertices.len(), 256);
                 unsafe {
+                    profile::scope!("copy drawer vertices");
                     (*slice).copy_from_slice(vertices);
                 }
-                let indices = drawer.get_index_buffer();
+                let indices = drawer.get_indices();
                 let indices_byte_length = indices.len() * size_of::<u32>();
                 let (slice, indices_offset) =
                     self.dynamic_index_buffer.allocate(indices_byte_length, 256);
                 unsafe {
-                    let indices = std::slice::from_raw_parts(
+                    profile::scope!("copy drawer indices");
+                    let indices_bytes = std::slice::from_raw_parts(
                         indices.as_ptr() as *const u8,
                         indices_byte_length,
                     );
-                    (*slice).copy_from_slice(indices);
+                    (*slice).copy_from_slice(indices_bytes);
                 }
                 #[repr(C, packed)]
                 struct Options {
@@ -333,20 +381,17 @@ impl Renderer {
                         primitive_bytes_offset: vertices_offset,
                     };
                 }
-                let indices_offset = indices_offset as usize;
-                assert!(indices_offset % size_of::<u32>() == 0);
-                let index_offset = indices_offset / size_of::<u32>();
                 ctx.bind_index_buffer(
                     &self.device,
                     self.dynamic_index_buffer.buffer,
                     vk::IndexType::UINT32,
-                    index_offset,
+                    indices_offset as usize,
                 );
                 ctx.bind_graphics_pipeline(&self.device, self.ui_program, 0);
                 ctx.draw_indexed(
                     &self.device,
                     vulkan::DrawIndexedOptions {
-                        vertex_count: drawer.get_index_offset() as u32,
+                        vertex_count: indices.len() as u32,
                         ..Default::default()
                     },
                 );
@@ -362,7 +407,7 @@ impl Renderer {
         }
 
         {
-            optick::event!("submit and present");
+            profile::scope!("submit and present");
             ctx.prepare_present(&self.surface);
             self.device
                 .submit(&ctx, &[&self.fence], &[(self.i_frame as u64) + 1])?;
@@ -379,6 +424,8 @@ struct App {
 }
 
 fn main() -> Result<()> {
+    profile::init();
+
     let mut shader_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
     shader_dir.push("dummy_file");
     println!("Shaders directory: {:?}", &shader_dir);
@@ -395,7 +442,7 @@ fn main() -> Result<()> {
     let mut drawer = unsafe { Drawer::new(&mut DRAWER_VERTEX_MEMORY, &mut DRAWER_INDEX_MEMORY) };
 
     event_loop.run_return(|event, _, control_flow| {
-        optick::event!("window event");
+        profile::scope!("window event");
 
         // Only runs event loop when there are events, ControlFlow::Poll runs the loop even when empty
         *control_flow = ControlFlow::Wait;
@@ -411,11 +458,11 @@ fn main() -> Result<()> {
 
             Event::MainEventsCleared => {
                 {
-                    optick::event!("draw");
+                    profile::scope!("ui draw");
                     drawer.clear();
 
                     let window_size: winit::dpi::LogicalSize<f32> =
-                        window.inner_size().to_logical(window.scale_factor());
+                        window.inner_size().to_logical(1.0);
                     let pos = [window_size.width * 0.25, 10.0];
                     let size = [window_size.width * 0.5, 10.0];
                     drawer.draw_colored_rect(Rect { pos, size }, 0, ColorU32(0xFF000000));

@@ -172,12 +172,12 @@ impl<'a> Drawer<'a> {
         self.index_offset += CORNERS.len();
     }
 
-    pub fn get_vertex_buffer(&self) -> &[u8] {
-        self.vertex_buffer
+    pub fn get_vertices(&self) -> &[u8] {
+        &self.vertex_buffer[0..self.vertex_byte_offset]
     }
 
-    pub fn get_index_buffer(&self) -> &[u32] {
-        self.index_buffer
+    pub fn get_indices(&self) -> &[u32] {
+        &self.index_buffer[0..self.index_offset]
     }
 
     pub fn get_index_offset(&self) -> usize {
