@@ -15,7 +15,7 @@ const VK_KHR_WIN32_SURFACE_EXTENSION_NAME: *const c_char = cstr!("VK_KHR_win32_s
 const VK_KHR_XCB_SURFACE_EXTENSION_NAME: *const c_char = cstr!("VK_KHR_xcb_surface");
 const VK_EXT_DEBUG_UTILS_EXTENSION_NAME: *const c_char = cstr!("VK_EXT_debug_utils");
 
-const MAX_PHYSICAL_DEVICES: usize = 4;
+pub const MAX_PHYSICAL_DEVICES: usize = 4;
 
 pub struct InstanceSpec {
     enable_validation: bool,

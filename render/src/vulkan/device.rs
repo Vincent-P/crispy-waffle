@@ -20,8 +20,7 @@ use std::os::raw::c_char;
 
 const VK_KHR_SWAPCHAIN_EXTENSION_NAME: *const c_char = cstr!("VK_KHR_swapchain");
 
-pub struct DeviceSpec<'a> {
-    pub physical_device: &'a mut PhysicalDevice,
+pub struct DeviceSpec {
     pub push_constant_size: usize,
 }
 
@@ -33,9 +32,9 @@ pub struct DeviceDescriptors {
     pub pipeline_layout: vk::PipelineLayout,
 }
 
-pub struct Device<'a> {
+pub struct Device {
     pub device: Box<DeviceLoader>,
-    pub spec: DeviceSpec<'a>,
+    pub spec: DeviceSpec,
     pub allocator: GpuAllocator<vk::DeviceMemory>,
     pub graphics_family_idx: u32,
     pub compute_family_idx: u32,
@@ -49,16 +48,20 @@ pub struct Device<'a> {
     pub sampler: vk::Sampler,
 }
 
-impl<'a> Device<'a> {
+impl Device {
     #[allow(clippy::collapsible_if)]
-    pub fn new(instance: &'a Instance, spec: DeviceSpec<'a>) -> VulkanResult<Self> {
+    pub fn new(
+        instance: &Instance,
+        spec: DeviceSpec,
+        physical_device: &mut PhysicalDevice,
+    ) -> VulkanResult<Self> {
         let mut device_extensions = DynamicArray::<_, 8>::new();
         device_extensions.push(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
         let queue_families = unsafe {
             instance
                 .instance
-                .get_physical_device_queue_family_properties(spec.physical_device.device, None)
+                .get_physical_device_queue_family_properties(physical_device.device, None)
         };
 
         let mut queue_create_infos = DynamicArray::<_, 8>::new();
@@ -109,7 +112,7 @@ impl<'a> Device<'a> {
         let device_info = vk::DeviceCreateInfoBuilder::new()
             .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(&device_extensions)
-            .extend_from(&mut spec.physical_device.features);
+            .extend_from(&mut physical_device.features);
 
         let device = unsafe {
             let device_info = device_info.build_dangling();
@@ -124,17 +127,13 @@ impl<'a> Device<'a> {
                 base_struct = (*base_struct).p_next as *const vk::BaseInStructure;
             }
 
-            DeviceLoader::new(
-                &instance.instance,
-                spec.physical_device.device,
-                &device_info,
-            )
+            DeviceLoader::new(&instance.instance, physical_device.device, &device_info)
         }
         .unwrap();
         let device = Box::new(device);
 
         let props = unsafe {
-            gpu_alloc_erupt::device_properties(&instance.instance, spec.physical_device.device)
+            gpu_alloc_erupt::device_properties(&instance.instance, physical_device.device)
         }?;
         let config = Config::i_am_prototyping();
         let allocator = GpuAllocator::new(config, props);

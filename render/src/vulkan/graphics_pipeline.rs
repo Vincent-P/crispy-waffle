@@ -52,7 +52,7 @@ pub struct GraphicsProgram {
     pub renderpass: vk::RenderPass,
 }
 
-impl Device<'_> {
+impl Device {
     pub fn create_graphics_program(
         &mut self,
         graphics_state: GraphicsState,

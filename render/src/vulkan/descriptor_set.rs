@@ -267,7 +267,7 @@ impl DynamicBufferDescriptor {
     }
 }
 
-impl Device<'_> {
+impl Device {
     pub fn find_or_create_uniform_descriptor(
         &mut self,
         buffer: Handle<Buffer>,

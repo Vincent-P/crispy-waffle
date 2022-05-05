@@ -12,7 +12,7 @@ pub struct Shader {
     pub bytecode: Vec<u8>,
 }
 
-impl Device<'_> {
+impl Device {
     pub fn create_shader(&mut self, path: PathBuf) -> VulkanResult<Handle<Shader>> {
         let bytecode = std::fs::read(&path).unwrap();
 

@@ -114,7 +114,7 @@ pub fn create_renderpass(
     Ok(Renderpass { vkhandle, load_ops })
 }
 
-impl Device<'_> {
+impl Device {
     pub fn create_framebuffer(
         &mut self,
         format: &FramebufferFormat,

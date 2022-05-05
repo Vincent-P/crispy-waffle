@@ -67,7 +67,7 @@ pub struct Image {
     pub state: ImageState,
 }
 
-impl Device<'_> {
+impl Device {
     fn create_image_view(
         &mut self,
         image: vk::Image,

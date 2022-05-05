@@ -2,6 +2,7 @@ use super::device::*;
 use super::error::*;
 use super::image::*;
 use super::instance::*;
+use super::physical_device::*;
 
 use exo::{dynamic_array::DynamicArray, pool::Handle};
 
@@ -29,6 +30,7 @@ impl Surface {
     pub fn new<WindowHandle: HasRawWindowHandle>(
         instance: &Instance,
         device: &mut Device,
+        physical_device: &mut PhysicalDevice,
         window_handle: &WindowHandle,
     ) -> VulkanResult<Surface> {
         let surface = unsafe {
@@ -38,7 +40,7 @@ impl Surface {
 
         let _graphics_present_support = unsafe {
             instance.instance.get_physical_device_surface_support_khr(
-                device.spec.physical_device.device,
+                physical_device.device,
                 device.graphics_family_idx,
                 surface,
             )
@@ -48,7 +50,7 @@ impl Surface {
             instance
                 .instance
                 .get_physical_device_surface_present_modes_khr(
-                    device.spec.physical_device.device,
+                    physical_device.device,
                     surface,
                     None,
                 )
@@ -69,11 +71,7 @@ impl Surface {
         let surface_formats = unsafe {
             instance
                 .instance
-                .get_physical_device_surface_formats_khr(
-                    device.spec.physical_device.device,
-                    surface,
-                    None,
-                )
+                .get_physical_device_surface_formats_khr(physical_device.device, surface, None)
                 .result()?
         };
 
@@ -105,7 +103,7 @@ impl Surface {
             can_present_semaphores: DynamicArray::new(),
         };
 
-        surface.create_swapchain(instance, device)?;
+        surface.create_swapchain(instance, device, physical_device)?;
 
         Ok(surface)
     }
@@ -121,14 +119,12 @@ impl Surface {
         &mut self,
         instance: &Instance,
         device: &mut Device,
+        physical_device: &mut PhysicalDevice,
     ) -> VulkanResult<()> {
         let capabilities = unsafe {
             instance
                 .instance
-                .get_physical_device_surface_capabilities_khr(
-                    device.spec.physical_device.device,
-                    self.surface,
-                )
+                .get_physical_device_surface_capabilities_khr(physical_device.device, self.surface)
                 .result()?
         };
         self.size[0] = capabilities.current_extent.width as i32;
@@ -250,8 +246,9 @@ impl Surface {
         &mut self,
         instance: &Instance,
         device: &mut Device,
+        physical_device: &mut PhysicalDevice,
     ) -> VulkanResult<()> {
         self.destroy_swapchain(device);
-        self.create_swapchain(instance, device)
+        self.create_swapchain(instance, device, physical_device)
     }
 }

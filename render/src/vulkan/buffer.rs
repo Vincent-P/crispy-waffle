@@ -31,7 +31,7 @@ pub struct Buffer {
     pub storage_idx: u32,
 }
 
-impl Device<'_> {
+impl Device {
     pub fn create_buffer(&mut self, spec: BufferSpec) -> VulkanResult<Handle<Buffer>> {
         let is_storage = spec.usages.contains(vk::BufferUsageFlags::STORAGE_BUFFER);
 

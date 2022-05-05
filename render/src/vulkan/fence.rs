@@ -10,7 +10,7 @@ pub struct Fence {
     pub value: u64,
 }
 
-impl Device<'_> {
+impl Device {
     pub fn create_fence(&mut self) -> VulkanResult<Fence> {
         let value: u64 = 0;
 

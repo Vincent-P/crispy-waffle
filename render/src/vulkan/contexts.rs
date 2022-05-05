@@ -78,7 +78,7 @@ pub struct GraphicsContext {
     base: BaseContext,
 }
 
-impl Device<'_> {
+impl Device {
     pub fn get_base_context(
         &self,
         context_pool: &mut ContextPool,

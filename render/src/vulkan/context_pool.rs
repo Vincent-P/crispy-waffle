@@ -11,7 +11,7 @@ pub struct ContextPool {
     pub command_buffers_is_used: [Vec<bool>; queues::COUNT],
 }
 
-impl Device<'_> {
+impl Device {
     pub fn create_context_pool(&self) -> VulkanResult<ContextPool> {
         let pool_info =
             vk::CommandPoolCreateInfoBuilder::new().queue_family_index(self.graphics_family_idx);
