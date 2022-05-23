@@ -1,9 +1,9 @@
 use anyhow::Result;
 use exo::{dynamic_array::DynamicArray, pool::Handle};
 use raw_window_handle::HasRawWindowHandle;
-use std::{ffi::CStr, mem::size_of, os::raw::c_char, path::PathBuf};
+use std::{ffi::CStr, mem::size_of, os::raw::c_char, path::PathBuf, rc::Rc};
 use winit::{
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
     window::WindowBuilder,
@@ -19,7 +19,9 @@ use render::{
     },
 };
 
-use drawer2d::{drawer::*, rect::*};
+use drawer2d::{drawer::*, font::*, rect::*};
+
+use ui::*;
 
 mod profile {
     #[cfg(feature = "optick")]
@@ -254,7 +256,7 @@ impl Renderer {
         self.instance.destroy();
     }
 
-    pub fn draw(&mut self, drawer: Option<&Drawer>) -> VulkanResult<()> {
+    pub fn draw(&mut self, drawer: Option<&mut Drawer>) -> VulkanResult<()> {
         profile::next_frame();
 
         let current_frame = self.i_frame % FRAME_QUEUE_LENGTH;
@@ -331,9 +333,22 @@ impl Renderer {
                 ),
             );
             if let Some(drawer) = drawer {
+                drawer
+                    .get_glyph_cache_mut()
+                    .process_events(|cache_event, glyph_image| {
+                        println!("glyph cache event:{:?}", cache_event);
+                        if let Some(image) = glyph_image {
+                            println!(
+                                "glyph image {}x{}",
+                                image.placement.width, image.placement.height
+                            );
+                        }
+                    });
+
                 let vertices = drawer.get_vertices();
-                let (slice, vertices_offset) =
-                    self.dynamic_vertex_buffer.allocate(vertices.len(), 256);
+                let (slice, vertices_offset) = self
+                    .dynamic_vertex_buffer
+                    .allocate(vertices.len(), Drawer::get_primitive_alignment());
                 unsafe {
                     profile::scope!("copy drawer vertices");
                     (*slice).copy_from_slice(vertices);
@@ -419,18 +434,22 @@ impl Renderer {
     }
 }
 
-struct App {
+struct App<'a> {
     pub renderer: Renderer,
     pub drawer: Drawer<'static>,
+    pub ui: UiState<'a>,
 }
 
-impl App {
+impl App<'_> {
     pub fn draw_ui(&mut self, viewport_size: [f32; 2]) {
         profile::scope!("ui draw");
         self.drawer.clear();
+        self.ui.new_frame();
 
         let pos = [viewport_size[0] * 0.25, 10.0];
         let size = [viewport_size[0] * 0.5, 10.0];
+
+        /*
         self.drawer
             .draw_colored_rect(Rect { pos, size }, 0, ColorU32(0xFF000000));
         self.drawer.draw_colored_rect(
@@ -449,18 +468,26 @@ impl App {
             0,
             ColorU32(0xFF00FF00),
         );
-        self.drawer.draw_colored_rect(
-            Rect {
-                pos: [250.0, 250.0],
-                size: [150.0, 150.0],
+        */
+
+        if self.ui.button(
+            &mut self.drawer,
+            UiButton {
+                label: "test",
+                rect: Rect {
+                    pos: [250.0, 250.0],
+                    size: [150.0, 150.0],
+                },
             },
-            0,
-            ColorU32(0xFFFF0000),
-        );
+        ) {
+            println!("button pressed!");
+        }
+
+        self.ui.end_frame();
     }
 
     pub fn draw_gpu(&mut self) -> VulkanResult<()> {
-        self.renderer.draw(Some(&self.drawer))
+        self.renderer.draw(Some(&mut self.drawer))
     }
 }
 
@@ -477,16 +504,33 @@ fn main() -> Result<()> {
         .build(&event_loop)
         .unwrap();
 
+    let ui_font = Font::from_file(
+        shader_dir
+            .with_file_name("iAWriterQuattroS-Regular.ttf")
+            .to_str()
+            .unwrap(),
+        0,
+    )
+    .unwrap();
+
     let mut app = App {
         renderer: Renderer::new(&window, shader_dir)?,
-        drawer: unsafe { Drawer::new(&mut DRAWER_VERTEX_MEMORY, &mut DRAWER_INDEX_MEMORY) },
+        drawer: unsafe {
+            Drawer::new(
+                &mut DRAWER_VERTEX_MEMORY,
+                &mut DRAWER_INDEX_MEMORY,
+                [2048, 2048],
+                0,
+            )
+        },
+        ui: UiState::new(Rc::new(Face::from_font(&ui_font, 36.0))),
     };
 
     event_loop.run_return(|event, _, control_flow| {
         profile::scope!("window event");
 
         // Only runs event loop when there are events, ControlFlow::Poll runs the loop even when empty
-        *control_flow = ControlFlow::Wait;
+        *control_flow = ControlFlow::Poll;
 
         match event {
             // Close when exit is requested
@@ -495,11 +539,34 @@ fn main() -> Result<()> {
                 window_id,
             } if window_id == window.id() => *control_flow = ControlFlow::Exit,
 
+            Event::WindowEvent {
+                event:
+                    WindowEvent::CursorMoved {
+                        device_id,
+                        position,
+                        ..
+                    },
+                window_id,
+            } => {
+                let mouse_position: winit::dpi::LogicalPosition<f32> = position.to_logical(1.0);
+                app.ui
+                    .set_mouse_position([mouse_position.x, mouse_position.y]);
+            }
+
+            Event::WindowEvent {
+                event: WindowEvent::MouseInput { state, button, .. },
+                window_id,
+            } => {
+                if button == MouseButton::Left {
+                    app.ui
+                        .set_left_mouse_button_pressed(state == ElementState::Pressed);
+                }
+            }
+
             Event::RedrawRequested(window_id) if window_id == window.id() => {}
 
             Event::MainEventsCleared => {
-                let window_size: winit::dpi::LogicalSize<f32> =
-                    window.inner_size().to_logical(window.scale_factor());
+                let window_size: winit::dpi::LogicalSize<f32> = window.inner_size().to_logical(1.0);
 
                 app.draw_ui([window_size.width, window_size.height]);
 

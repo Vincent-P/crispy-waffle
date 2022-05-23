@@ -1,4 +1,5 @@
 use std::env;
+use std::path::Path;
 use std::process::Command;
 
 fn compile_shader(shader_name: &str, out_dir: &str) {
@@ -22,6 +23,15 @@ fn compile_shader(shader_name: &str, out_dir: &str) {
     );
 }
 
+fn copy_resource(filename: &str, out_dir: &str) -> std::io::Result<u64> {
+    let input_path = Path::new("resources").join(filename);
+    let output_path = Path::new(out_dir).join(filename);
+
+    let res = std::fs::copy(&input_path, &output_path);
+    println!("cargo:warning={:?} -> {:?}", &input_path, &output_path);
+    res
+}
+
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
@@ -31,4 +41,6 @@ fn main() {
     compile_shader("base.frag", &out_dir);
     compile_shader("ui.vert", &out_dir);
     compile_shader("ui.frag", &out_dir);
+
+    copy_resource("iAWriterQuattroS-Regular.ttf", &out_dir);
 }

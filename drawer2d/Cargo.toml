@@ -6,3 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+swash = "0.1.4"
+etagere = "0.2.7"
+nohash-hasher = "0.2.0"

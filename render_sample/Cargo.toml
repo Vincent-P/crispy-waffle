@@ -9,6 +9,7 @@ edition = "2021"
 exo = {path= "../exo"}
 render = {path= "../render"}
 drawer2d = {path= "../drawer2d"}
+ui = {path= "../ui"}
 winit = "0.26.1"
 anyhow = "1.0"
 raw-window-handle = "0.4.2"

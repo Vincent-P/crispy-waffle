@@ -21,6 +21,7 @@
 #define i32 int
 
 const u32 sizeof_float4 = 16;
+#define NaN intBitsToFloat(0xffffffff)
 
 // End Types
 
@@ -28,21 +29,33 @@ const u32 sizeof_float4 = 16;
 
 struct Rect
 {
-    float2 position;
-    float2 size;
+	float2 position;
+	float2 size;
 };
 const u32 sizeof_rect = sizeof_float4;
 
 struct ColorRect
 {
-    Rect rect;
-    u32 color;
-    u32 i_clip_rect;
-    u32 padding[2];
+	Rect rect;
+	u32 color;
+	u32 i_clip_rect;
+	u32 padding[2];
 };
+
 const u32 sizeof_color_rect = 2 * sizeof_float4;
 
+struct TexturedRect
+{
+	Rect rect;
+	Rect uv;
+	u32 texture_descriptor;
+	u32 i_clip_rect;
+	u32 padding[2];
+};
+const u32 sizeof_textured_rect = 3 * sizeof_float4;
+
 const u32 RectType_Color = 0;
+const u32 RectType_Textured = 1;
 
 // End Rects
 
@@ -60,6 +73,7 @@ const u32 RectType_Color = 0;
 #define BINDLESS_BUFFER layout(set = GLOBAL_BINDLESS_SET, binding = GLOBAL_BUFFER_BINDING) buffer
 
 BINDLESS_BUFFER ColorRectBuffer    { ColorRect rects[];  } global_buffers_color_rects[];
+BINDLESS_BUFFER TexturedRectBuffer	   { TexturedRect rects[];	 } global_buffers_textured_rects[];
 // End Bindless
 
 layout(set = SHADER_UNIFORM_SET, binding = 0) uniform Options {
@@ -86,14 +100,32 @@ float4 color_rect(u32 i_primitive, u32 corner, float2 uv)
     return unpackUnorm4x8(rect.color);
 }
 
+float4 textured_rect(u32 i_primitive, u32 corner, float2 uv)
+{
+    u32 primitive_offset = primitive_bytes_offset / sizeof_textured_rect;
+    TexturedRect rect = global_buffers_textured_rects[vertices_descriptor_index].rects[primitive_offset + i_primitive];
+    return float4(uv, 0, 1);
+}
+
 layout(location = 0) in float2 i_uv;
 layout(location = 1) in flat u32 i_primitive_index;
 layout(location = 0) out float4 o_color;
 void main()
 {
-    u32 i_primitive    = i_primitive_index & 0x00ffffff;
-    u32 corner         = (i_primitive_index & 0x03000000) >> 24;
-    u32 primitive_type = (i_primitive_index & 0xfc000000) >> 26;
+	u32 corner		   = (i_primitive_index & 0xc0000000u) >> 30;
+	u32 primitive_type = (i_primitive_index & 0x3f000000u) >> 24;
+	u32 i_primitive	= (i_primitive_index & 0x00ffffffu);
 
-    o_color = color_rect(i_primitive, corner, i_uv);
+	if (primitive_type == RectType_Color)
+	{
+		o_color = color_rect(i_primitive, corner, i_uv);
+	}
+	else if (primitive_type == RectType_Textured)
+	{
+		o_color = textured_rect(i_primitive, corner, i_uv);
+	}
+	else
+	{
+		o_color = float4(1, 0, 1, 1);
+	}
 }
