@@ -956,6 +956,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui"
+version = "0.1.0"
+dependencies = [
+ "drawer2d",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
