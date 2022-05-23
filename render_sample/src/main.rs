@@ -421,6 +421,47 @@ impl Renderer {
 
 struct App {
     pub renderer: Renderer,
+    pub drawer: Drawer<'static>,
+}
+
+impl App {
+    pub fn draw_ui(&mut self, viewport_size: [f32; 2]) {
+        profile::scope!("ui draw");
+        self.drawer.clear();
+
+        let pos = [viewport_size[0] * 0.25, 10.0];
+        let size = [viewport_size[0] * 0.5, 10.0];
+        self.drawer
+            .draw_colored_rect(Rect { pos, size }, 0, ColorU32(0xFF000000));
+        self.drawer.draw_colored_rect(
+            Rect {
+                pos: [35.0, 35.0],
+                size: [50.0, 50.0],
+            },
+            0,
+            ColorU32(0xFF0000FF),
+        );
+        self.drawer.draw_colored_rect(
+            Rect {
+                pos: [50.0, 50.0],
+                size: [250.0, 250.0],
+            },
+            0,
+            ColorU32(0xFF00FF00),
+        );
+        self.drawer.draw_colored_rect(
+            Rect {
+                pos: [250.0, 250.0],
+                size: [150.0, 150.0],
+            },
+            0,
+            ColorU32(0xFFFF0000),
+        );
+    }
+
+    pub fn draw_gpu(&mut self) -> VulkanResult<()> {
+        self.renderer.draw(Some(&self.drawer))
+    }
 }
 
 fn main() -> Result<()> {
@@ -438,8 +479,8 @@ fn main() -> Result<()> {
 
     let mut app = App {
         renderer: Renderer::new(&window, shader_dir)?,
+        drawer: unsafe { Drawer::new(&mut DRAWER_VERTEX_MEMORY, &mut DRAWER_INDEX_MEMORY) },
     };
-    let mut drawer = unsafe { Drawer::new(&mut DRAWER_VERTEX_MEMORY, &mut DRAWER_INDEX_MEMORY) };
 
     event_loop.run_return(|event, _, control_flow| {
         profile::scope!("window event");
@@ -457,42 +498,13 @@ fn main() -> Result<()> {
             Event::RedrawRequested(window_id) if window_id == window.id() => {}
 
             Event::MainEventsCleared => {
-                {
-                    profile::scope!("ui draw");
-                    drawer.clear();
+                let window_size: winit::dpi::LogicalSize<f32> =
+                    window.inner_size().to_logical(window.scale_factor());
 
-                    let window_size: winit::dpi::LogicalSize<f32> =
-                        window.inner_size().to_logical(1.0);
-                    let pos = [window_size.width * 0.25, 10.0];
-                    let size = [window_size.width * 0.5, 10.0];
-                    drawer.draw_colored_rect(Rect { pos, size }, 0, ColorU32(0xFF000000));
-                    drawer.draw_colored_rect(
-                        Rect {
-                            pos: [35.0, 35.0],
-                            size: [50.0, 50.0],
-                        },
-                        0,
-                        ColorU32(0xFF0000FF),
-                    );
-                    drawer.draw_colored_rect(
-                        Rect {
-                            pos: [50.0, 50.0],
-                            size: [250.0, 250.0],
-                        },
-                        0,
-                        ColorU32(0xFF00FF00),
-                    );
-                    drawer.draw_colored_rect(
-                        Rect {
-                            pos: [250.0, 250.0],
-                            size: [150.0, 150.0],
-                        },
-                        0,
-                        ColorU32(0xFFFF0000),
-                    );
-                }
-                if let Err(e) = app.renderer.draw(Some(&drawer)) {
-                    eprintln!("Error occured: {:?}", e);
+                app.draw_ui([window_size.width, window_size.height]);
+
+                if let Err(e) = app.draw_gpu() {
+                    eprintln!("Renderer error: {:?}", e);
                     *control_flow = ControlFlow::Exit;
                 }
             }
