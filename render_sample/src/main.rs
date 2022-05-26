@@ -19,7 +19,7 @@ use render::{
     },
 };
 
-use drawer2d::{drawer::*, font::*, rect::*};
+use drawer2d::{drawer::*, font::*, glyph_cache::GlyphEvent, rect::*};
 
 use ui::*;
 
@@ -88,6 +88,8 @@ struct Renderer {
     uniform_buffer: RingBuffer,
     dynamic_vertex_buffer: RingBuffer,
     dynamic_index_buffer: RingBuffer,
+    upload_buffer: RingBuffer,
+    glyph_atlas: Handle<vulkan::Image>,
 }
 
 impl Renderer {
@@ -194,6 +196,7 @@ impl Renderer {
             &mut device,
             RingBufferSpec {
                 usages: vk::BufferUsageFlags::UNIFORM_BUFFER,
+                memory_usage: vulkan::buffer::MemoryUsageFlags::FAST_DEVICE_ACCESS,
                 frame_queue_length: FRAME_QUEUE_LENGTH,
                 buffer_size: 1024,
             },
@@ -203,6 +206,7 @@ impl Renderer {
             &mut device,
             RingBufferSpec {
                 usages: vk::BufferUsageFlags::STORAGE_BUFFER,
+                memory_usage: vulkan::buffer::MemoryUsageFlags::FAST_DEVICE_ACCESS,
                 frame_queue_length: FRAME_QUEUE_LENGTH,
                 buffer_size: 128 << 20,
             },
@@ -212,10 +216,26 @@ impl Renderer {
             &mut device,
             RingBufferSpec {
                 usages: vk::BufferUsageFlags::INDEX_BUFFER,
+                memory_usage: vulkan::buffer::MemoryUsageFlags::FAST_DEVICE_ACCESS,
                 frame_queue_length: FRAME_QUEUE_LENGTH,
                 buffer_size: 32 << 20,
             },
         )?;
+
+        let upload_buffer = RingBuffer::new(
+            &mut device,
+            RingBufferSpec {
+                usages: vk::BufferUsageFlags::TRANSFER_SRC,
+                memory_usage: vulkan::buffer::MemoryUsageFlags::UPLOAD,
+                frame_queue_length: FRAME_QUEUE_LENGTH,
+                buffer_size: 32 << 20,
+            },
+        )?;
+
+        let glyph_atlas = device.create_image(vulkan::ImageSpec {
+            size: [2048, 2048, 1],
+            ..Default::default()
+        })?;
 
         Ok(Self {
             instance,
@@ -231,6 +251,8 @@ impl Renderer {
             uniform_buffer,
             dynamic_vertex_buffer,
             dynamic_index_buffer,
+            upload_buffer,
+            glyph_atlas,
         })
     }
 
@@ -256,7 +278,12 @@ impl Renderer {
         self.instance.destroy();
     }
 
-    pub fn draw(&mut self, drawer: Option<&mut Drawer>) -> VulkanResult<()> {
+    pub fn get_glyph_atlas_descriptor(&self) -> u32 {
+        let image = self.device.images.get(self.glyph_atlas);
+        image.full_view.sampled_idx
+    }
+
+    pub fn draw(&mut self, mut drawer: Option<&mut Drawer>) -> VulkanResult<()> {
         profile::next_frame();
 
         let current_frame = self.i_frame % FRAME_QUEUE_LENGTH;
@@ -304,16 +331,80 @@ impl Renderer {
                 &self.surface,
                 vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
             );
+
+            if self.i_frame == 0 {
+                ctx.barrier(
+                    &mut self.device,
+                    self.glyph_atlas,
+                    vulkan::ImageState::TransferDst,
+                );
+                ctx.clear_image(
+                    &self.device,
+                    self.glyph_atlas,
+                    vulkan::ClearColorValue::Float32([0.0, 0.0, 0.0, 1.0]),
+                );
+            }
+
             ctx.barrier(
                 &mut self.device,
                 self.surface.images[self.surface.current_image as usize],
                 vulkan::ImageState::ColorAttachment,
             );
+            if let Some(ref mut drawer) = drawer {
+                let mut glyphs_to_upload: Vec<vulkan::BufferImageCopy> = Vec::with_capacity(32);
+                drawer.get_glyph_cache_mut().process_events(
+                    |cache_event, glyph_image, glyph_atlas_pos| {
+                        // Copy new glyphs to the upload buffer
+                        if let GlyphEvent::New(_, _) = cache_event {
+                            assert!(glyph_image.is_some());
+                            let image = glyph_image.unwrap();
+
+                            let (slice, offset) =
+                                self.upload_buffer.allocate(image.data.len(), 256);
+                            unsafe {
+                                (*slice).copy_from_slice(&image.data);
+                            }
+
+                            let image_offset =
+                                [glyph_atlas_pos.unwrap()[0], glyph_atlas_pos.unwrap()[1], 0];
+
+                            glyphs_to_upload.push(vulkan::BufferImageCopy {
+                                buffer_offset: offset as u64,
+                                buffer_size: image.data.len() as u32,
+                                image_offset,
+                                image_extent: [
+                                    image.placement.width as u32,
+                                    image.placement.height as u32,
+                                    1,
+                                ],
+                            });
+                        }
+                    },
+                );
+                if !glyphs_to_upload.is_empty() {
+                    ctx.barrier(
+                        &mut self.device,
+                        self.glyph_atlas,
+                        vulkan::ImageState::TransferDst,
+                    );
+                    ctx.copy_buffer_to_image(
+                        &self.device,
+                        self.upload_buffer.buffer,
+                        self.glyph_atlas,
+                        &glyphs_to_upload,
+                    );
+                    ctx.barrier(
+                        &mut self.device,
+                        self.glyph_atlas,
+                        vulkan::ImageState::GraphicsShaderRead,
+                    );
+                }
+            }
             ctx.begin_pass(
                 &mut self.device,
                 self.framebuffers[self.surface.current_image as usize],
                 &[vulkan::LoadOp::ClearColor(
-                    vulkan::ClearColorValue::Float32([1.0, 1.0, 0.0, 1.0]),
+                    vulkan::ClearColorValue::Float32([0.0, 0.0, 0.0, 1.0]),
                 )],
             )?;
             ctx.set_viewport(
@@ -333,18 +424,6 @@ impl Renderer {
                 ),
             );
             if let Some(drawer) = drawer {
-                drawer
-                    .get_glyph_cache_mut()
-                    .process_events(|cache_event, glyph_image| {
-                        println!("glyph cache event:{:?}", cache_event);
-                        if let Some(image) = glyph_image {
-                            println!(
-                                "glyph image {}x{}",
-                                image.placement.width, image.placement.height
-                            );
-                        }
-                    });
-
                 let vertices = drawer.get_vertices();
                 let (slice, vertices_offset) = self
                     .dynamic_vertex_buffer
@@ -513,17 +592,19 @@ fn main() -> Result<()> {
     )
     .unwrap();
 
+    let renderer = Renderer::new(&window, shader_dir)?;
+    let drawer = Drawer::new(
+        unsafe { &mut DRAWER_VERTEX_MEMORY },
+        unsafe { &mut DRAWER_INDEX_MEMORY },
+        [2048, 2048],
+        renderer.get_glyph_atlas_descriptor(),
+    );
+    let ui = UiState::new(Rc::new(Face::from_font(&ui_font, 36.0)));
+
     let mut app = App {
-        renderer: Renderer::new(&window, shader_dir)?,
-        drawer: unsafe {
-            Drawer::new(
-                &mut DRAWER_VERTEX_MEMORY,
-                &mut DRAWER_INDEX_MEMORY,
-                [2048, 2048],
-                0,
-            )
-        },
-        ui: UiState::new(Rc::new(Face::from_font(&ui_font, 36.0))),
+        renderer,
+        drawer,
+        ui,
     };
 
     event_loop.run_return(|event, _, control_flow| {

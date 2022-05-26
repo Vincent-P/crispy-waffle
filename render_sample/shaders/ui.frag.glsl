@@ -74,6 +74,16 @@ const u32 RectType_Textured = 1;
 
 BINDLESS_BUFFER ColorRectBuffer    { ColorRect rects[];  } global_buffers_color_rects[];
 BINDLESS_BUFFER TexturedRectBuffer	   { TexturedRect rects[];	 } global_buffers_textured_rects[];
+
+layout(set = GLOBAL_BINDLESS_SET, binding = GLOBAL_SAMPLER_BINDING) uniform sampler2D global_textures[];
+layout(set = GLOBAL_BINDLESS_SET, binding = GLOBAL_SAMPLER_BINDING) uniform usampler2D global_textures_uint[];
+layout(set = GLOBAL_BINDLESS_SET, binding = GLOBAL_SAMPLER_BINDING) uniform sampler3D global_textures_3d[];
+layout(set = GLOBAL_BINDLESS_SET, binding = GLOBAL_SAMPLER_BINDING) uniform usampler3D global_textures_3d_uint[];
+
+layout(set = GLOBAL_BINDLESS_SET, binding = GLOBAL_IMAGE_BINDING, rgba8) uniform image2D global_images_2d_rgba8[];
+layout(set = GLOBAL_BINDLESS_SET, binding = GLOBAL_IMAGE_BINDING, rgba16f) uniform image2D global_images_2d_rgba16f[];
+layout(set = GLOBAL_BINDLESS_SET, binding = GLOBAL_IMAGE_BINDING, rgba32f) uniform image2D global_images_2d_rgba32f[];
+layout(set = GLOBAL_BINDLESS_SET, binding = GLOBAL_IMAGE_BINDING, r32f) uniform image2D global_images_2d_r32f[];
 // End Bindless
 
 layout(set = SHADER_UNIFORM_SET, binding = 0) uniform Options {
@@ -104,7 +114,8 @@ float4 textured_rect(u32 i_primitive, u32 corner, float2 uv)
 {
     u32 primitive_offset = primitive_bytes_offset / sizeof_textured_rect;
     TexturedRect rect = global_buffers_textured_rects[vertices_descriptor_index].rects[primitive_offset + i_primitive];
-    return float4(uv, 0, 1);
+
+	return texture(global_textures[nonuniformEXT(rect.texture_descriptor)], uv);
 }
 
 layout(location = 0) in float2 i_uv;

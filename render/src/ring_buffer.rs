@@ -7,6 +7,7 @@ use gpu_alloc::UsageFlags;
 
 pub struct RingBufferSpec {
     pub usages: vk::BufferUsageFlags,
+    pub memory_usage: MemoryUsageFlags,
     pub frame_queue_length: usize,
     pub buffer_size: usize,
 }
@@ -28,7 +29,7 @@ impl RingBuffer {
         let buffer = device.create_buffer(BufferSpec {
             size: spec.buffer_size,
             usages: spec.usages,
-            memory_usage: UsageFlags::HOST_ACCESS,
+            memory_usage: spec.memory_usage.union(UsageFlags::HOST_ACCESS),
         })?;
 
         Ok(Self {

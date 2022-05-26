@@ -245,13 +245,25 @@ impl<'a> Drawer<'a> {
         let mut cursor: f32 = 0.0;
         shaper.shape_with(|glyph_cluster| {
             for glyph in glyph_cluster.glyphs {
-                let glyph_uv = self.glyph_cache.queue_glyph(face, glyph.id);
+                let (glyph_atlas_pos, glyph_image) = self.glyph_cache.queue_glyph(face, glyph.id);
+                let glyph_placement = glyph_image.placement;
 
                 let rect = Rect {
-                    pos: [cursor + rect.pos[0] + glyph.x, rect.pos[1] + glyph.y],
+                    pos: [
+                        cursor + rect.pos[0] + glyph.x + (glyph_placement.left as f32),
+                        rect.pos[1] + glyph.y - (glyph_placement.top as f32),
+                    ],
+                    size: [glyph_placement.width as f32, glyph_placement.height as f32],
+                };
+
+                let glyph_uv = Rect {
+                    pos: [
+                        (glyph_atlas_pos[0] as f32) / (self.glyph_cache.get_size()[0] as f32),
+                        (glyph_atlas_pos[1] as f32) / (self.glyph_cache.get_size()[1] as f32),
+                    ],
                     size: [
-                        glyph_uv.size[0] * (self.glyph_cache.get_size()[0] as f32),
-                        glyph_uv.size[1] * (self.glyph_cache.get_size()[1] as f32),
+                        (rect.size[0] as f32) / (self.glyph_cache.get_size()[0] as f32),
+                        (rect.size[1] as f32) / (self.glyph_cache.get_size()[1] as f32),
                     ],
                 };
 

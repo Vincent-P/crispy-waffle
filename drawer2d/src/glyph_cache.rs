@@ -1,5 +1,4 @@
 use crate::font::*;
-use crate::rect::Rect;
 
 use etagere::BucketedAtlasAllocator;
 use nohash_hasher::IntMap;
@@ -23,8 +22,8 @@ struct FaceCache {
 
 #[derive(Debug)]
 pub enum GlyphEvent {
-    New(u64, GlyphId, etagere::Rectangle),
-    Evicted(etagere::Rectangle),
+    New(u64, GlyphId),
+    Evicted,
 }
 
 struct AllocMetadata {
@@ -56,12 +55,8 @@ impl GlyphCache {
         }
     }
 
-    pub fn queue_char(&mut self, face: &Face, c: char) -> Rect {
-        let glyph_id = face.font_ref.charmap().map(c);
-        self.queue_glyph(face, glyph_id)
-    }
-
-    pub fn queue_glyph(&mut self, face: &Face, glyph_id: GlyphId) -> Rect {
+    // Returns the pixel offset from the top left corner and atlas uv for a specified face and glyph
+    pub fn queue_glyph(&mut self, face: &Face, glyph_id: GlyphId) -> ([i32; 2], &GlyphImage) {
         // Get the face hash
         let face_hash = {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -96,16 +91,20 @@ impl GlyphCache {
             // Put it back at the most recently used slot
             self.atlas_lru.push_back(glyph_entry.alloc_id);
 
-            return rectangle_to_uv(
-                self.size,
-                self.atlas_allocations[&glyph_entry.alloc_id].rectangle,
-            );
+            let glyph_alloc = self.atlas_allocations.get(&glyph_entry.alloc_id).unwrap();
+            let glyph_atlas_pos = [glyph_alloc.rectangle.min.x, glyph_alloc.rectangle.min.y];
+            return (glyph_atlas_pos, glyph_entry.image.as_ref().unwrap());
         }
 
         // The glyph was not found, rasterize it and insert it in the cache
 
         // Render it
         let glyph_image = render_glyph(&mut self.scale_context, face, glyph_id).unwrap();
+        assert!(
+            glyph_image.data.len()
+                == (glyph_image.placement.width * glyph_image.placement.height) as usize
+                    * std::mem::size_of::<u32>()
+        );
 
         // Find free space for the rendered glyph in the glyph atlas
         let mut alloc = self.atlas.allocate(etagere::size2(
@@ -120,7 +119,7 @@ impl GlyphCache {
             let lru_alloc = self.atlas_lru.pop_front().unwrap();
             let alloc_data = self.atlas_allocations.get(&lru_alloc).unwrap();
 
-            self.events.push(GlyphEvent::Evicted(alloc_data.rectangle));
+            self.events.push(GlyphEvent::Evicted);
 
             // Remove the allocation from its face cache
             let face_glyph_entries = &mut self
@@ -165,35 +164,53 @@ impl GlyphCache {
             alloc_id: alloc.id,
             image: Some(glyph_image),
         });
+        let entry = face_glyph_entries.last().unwrap();
 
-        self.events
-            .push(GlyphEvent::New(face_hash, glyph_id, alloc.rectangle));
+        self.events.push(GlyphEvent::New(face_hash, glyph_id));
 
-        rectangle_to_uv(self.size, self.atlas_allocations[&alloc.id].rectangle)
+        let glyph_atlas_pos = [alloc.rectangle.min.x, alloc.rectangle.min.y];
+        (glyph_atlas_pos, entry.image.as_ref().unwrap())
     }
 
-    pub fn process_events<T>(&mut self, callback: T)
+    pub fn process_events<T>(&mut self, mut callback: T)
     where
-        T: Fn(&GlyphEvent, Option<&GlyphImage>),
+        T: FnMut(&GlyphEvent, Option<&GlyphImage>, Option<[i32; 2]>),
     {
         for event in self.events.iter() {
-            let glyph_image = if let GlyphEvent::New(face_hash, glyph_id, _) = event {
+            let glyph_entry = if let GlyphEvent::New(face_hash, glyph_id) = event {
                 Some(
                     self.face_caches
-                        .get(&face_hash)
+                        .get(face_hash)
                         .unwrap()
                         .glyphs
                         .iter()
                         .find(|glyph_entry| glyph_entry.id == *glyph_id)
-                        .unwrap()
-                        .image
-                        .as_ref()
                         .unwrap(),
                 )
             } else {
                 None
             };
-            callback(event, glyph_image);
+
+            let glyph_image = if let Some(entry) = glyph_entry {
+                entry.image.as_ref()
+            } else {
+                None
+            };
+
+            let glyph_atlas_pos = if let Some(entry) = glyph_entry {
+                Some(
+                    self.atlas_allocations
+                        .get(&entry.alloc_id)
+                        .unwrap()
+                        .rectangle
+                        .min
+                        .to_array(),
+                )
+            } else {
+                None
+            };
+
+            callback(event, glyph_image, glyph_atlas_pos);
         }
         self.events.clear();
     }
@@ -206,19 +223,6 @@ impl GlyphCache {
 impl FaceCache {
     pub fn new() -> Self {
         Self { glyphs: Vec::new() }
-    }
-}
-
-fn rectangle_to_uv(size: [i32; 2], rectangle: etagere::Rectangle) -> Rect {
-    Rect {
-        pos: [
-            (rectangle.min.x as f32) / (size[0] as f32),
-            (rectangle.min.y as f32) / (size[1] as f32),
-        ],
-        size: [
-            ((rectangle.max.x - rectangle.min.x) as f32) / (size[0] as f32),
-            ((rectangle.max.y - rectangle.min.y) as f32) / (size[1] as f32),
-        ],
     }
 }
 

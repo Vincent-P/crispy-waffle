@@ -66,6 +66,14 @@ impl Default for DrawIndexedOptions {
     }
 }
 
+#[derive(Debug)]
+pub struct BufferImageCopy {
+    pub buffer_offset: u64,
+    pub buffer_size: u32,
+    pub image_offset: [i32; 3],
+    pub image_extent: [u32; 3],
+}
+
 pub struct TransferContext {
     base: BaseContext,
 }
@@ -258,6 +266,79 @@ pub trait TransferContextMethods: HasBaseContext {
                 &[],
                 &[],
                 &[barrier],
+            );
+        }
+    }
+
+    fn copy_buffer_to_image(
+        &mut self,
+        device: &Device,
+        buffer: Handle<Buffer>,
+        image: Handle<Image>,
+        copies: &[BufferImageCopy],
+    ) {
+        let base_context = self.base_context();
+
+        let buffer = device.buffers.get(buffer);
+        let image = device.images.get(image);
+
+        let regions: Vec<_> = copies
+            .iter()
+            .map(|copy| {
+                vk::BufferImageCopyBuilder::new()
+                    .image_subresource(
+                        *vk::ImageSubresourceLayersBuilder::new()
+                            .aspect_mask(image.full_view.range.aspect_mask)
+                            .mip_level(0)
+                            .base_array_layer(0)
+                            .layer_count(1),
+                    )
+                    .image_extent(vk::Extent3D {
+                        width: copy.image_extent[0],
+                        height: copy.image_extent[1],
+                        depth: copy.image_extent[2],
+                    })
+                    .image_offset(vk::Offset3D {
+                        x: copy.image_offset[0],
+                        y: copy.image_offset[1],
+                        z: copy.image_offset[2],
+                    })
+                    .buffer_offset(copy.buffer_offset)
+            })
+            .collect();
+
+        unsafe {
+            device.device.cmd_copy_buffer_to_image(
+                base_context.cmd,
+                buffer.vkhandle,
+                image.vkhandle,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &regions,
+            );
+        }
+    }
+
+    fn clear_image(&self, device: &Device, image: Handle<Image>, clear_color: ClearColorValue) {
+        let base_context = self.base_context();
+        let image = device.images.get(image);
+        let range = image.full_view.range;
+
+        let clear_color = clear_color.to_vk();
+
+        let ranges = [vk::ImageSubresourceRangeBuilder::new()
+            .aspect_mask(range.aspect_mask)
+            .base_mip_level(range.base_mip_level)
+            .level_count(range.level_count)
+            .base_array_layer(range.base_array_layer)
+            .layer_count(range.layer_count)];
+
+        unsafe {
+            device.device.cmd_clear_color_image(
+                base_context.cmd,
+                image.vkhandle,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &clear_color,
+                &ranges,
             );
         }
     }

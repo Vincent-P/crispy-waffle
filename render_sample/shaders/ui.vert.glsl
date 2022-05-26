@@ -135,7 +135,7 @@ void textured_rect(out float2 o_position, out float2 o_uv, u32 i_primitive, u32 
 	else if (corner == 3)
 	{
 		o_position.x += rect.rect.size.x;
-		o_uv.x = rect.uv.size.x;
+		o_uv.x += rect.uv.size.x;
 	}
 }
 

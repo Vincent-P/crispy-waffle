@@ -4,13 +4,15 @@ use super::device::*;
 use super::error::*;
 
 use erupt::vk;
-use gpu_alloc::{Request, UsageFlags};
+use gpu_alloc::Request;
 use gpu_alloc_erupt::EruptMemoryDevice;
+
+pub type MemoryUsageFlags = gpu_alloc::UsageFlags;
 
 pub struct BufferSpec {
     pub size: usize,
     pub usages: vk::BufferUsageFlags,
-    pub memory_usage: UsageFlags,
+    pub memory_usage: MemoryUsageFlags,
 }
 
 impl Default for BufferSpec {
@@ -18,7 +20,7 @@ impl Default for BufferSpec {
         Self {
             size: 0,
             usages: vk::BufferUsageFlags::STORAGE_BUFFER,
-            memory_usage: UsageFlags::FAST_DEVICE_ACCESS,
+            memory_usage: MemoryUsageFlags::FAST_DEVICE_ACCESS,
         }
     }
 }
