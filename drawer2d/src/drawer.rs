@@ -243,6 +243,7 @@ impl<'a> Drawer<'a> {
         shaper.add_str(label);
 
         let mut cursor: f32 = 0.0;
+        let metrics = shaper.metrics();
         shaper.shape_with(|glyph_cluster| {
             for glyph in glyph_cluster.glyphs {
                 let (glyph_atlas_pos, glyph_image) = self.glyph_cache.queue_glyph(face, glyph.id);
@@ -251,7 +252,7 @@ impl<'a> Drawer<'a> {
                 let rect = Rect {
                     pos: [
                         cursor + rect.pos[0] + glyph.x + (glyph_placement.left as f32),
-                        rect.pos[1] + glyph.y - (glyph_placement.top as f32),
+                        rect.pos[1] + glyph.y - (glyph_placement.top as f32) + metrics.ascent,
                     ],
                     size: [glyph_placement.width as f32, glyph_placement.height as f32],
                 };
