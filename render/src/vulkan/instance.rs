@@ -18,8 +18,8 @@ const VK_EXT_DEBUG_UTILS_EXTENSION_NAME: *const c_char = cstr!("VK_EXT_debug_uti
 pub const MAX_PHYSICAL_DEVICES: usize = 4;
 
 pub struct InstanceSpec {
-    enable_validation: bool,
-    enable_graphic_windows: bool,
+    pub enable_validation: bool,
+    pub enable_graphic_windows: bool,
 }
 
 impl Default for InstanceSpec {

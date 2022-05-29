@@ -71,8 +71,9 @@ mod profile {
 }
 
 const FRAME_QUEUE_LENGTH: usize = 2;
-static mut DRAWER_VERTEX_MEMORY: [u8; 64 << 20] = [0; 64 << 20];
-static mut DRAWER_INDEX_MEMORY: [u32; 8 << 20] = [0; 8 << 20];
+static mut DRAWER_VERTEX_MEMORY: [u8; 64 << 10] = [0; 64 << 10];
+static mut DRAWER_INDEX_MEMORY: [u32; 8 << 10] = [0; 8 << 10];
+const GLYPH_ATLAS_RESOLUTION: i32 = 1024;
 
 struct Renderer {
     instance: vulkan::Instance,
@@ -97,7 +98,10 @@ impl Renderer {
         window_handle: &WindowHandle,
         shader_dir: PathBuf,
     ) -> vulkan::VulkanResult<Self> {
-        let instance = vulkan::Instance::new(vulkan::InstanceSpec::default())?;
+        let instance = vulkan::Instance::new(vulkan::InstanceSpec {
+            enable_validation: false,
+            ..Default::default()
+        })?;
         let mut physical_devices = instance.get_physical_devices()?;
 
         let mut i_selected = None;
@@ -233,7 +237,7 @@ impl Renderer {
         )?;
 
         let glyph_atlas = device.create_image(vulkan::ImageSpec {
-            size: [2048, 2048, 1],
+            size: [GLYPH_ATLAS_RESOLUTION, GLYPH_ATLAS_RESOLUTION, 1],
             ..Default::default()
         })?;
 
@@ -322,6 +326,10 @@ impl Renderer {
         }
 
         self.device.update_bindless_set();
+        self.uniform_buffer.start_frame();
+        self.dynamic_vertex_buffer.start_frame();
+        self.dynamic_index_buffer.start_frame();
+        self.upload_buffer.start_frame();
 
         let mut ctx = self.device.get_graphics_context(context_pool)?;
         {
@@ -434,15 +442,16 @@ impl Renderer {
                 }
                 let indices = drawer.get_indices();
                 let indices_byte_length = indices.len() * size_of::<u32>();
-                let (slice, indices_offset) =
-                    self.dynamic_index_buffer.allocate(indices_byte_length, 256);
+                let (slice, indices_offset) = self
+                    .dynamic_index_buffer
+                    .allocate(indices_byte_length, size_of::<u32>());
                 unsafe {
                     profile::scope!("copy drawer indices");
-                    let indices_bytes = std::slice::from_raw_parts(
-                        indices.as_ptr() as *const u8,
-                        indices_byte_length,
+                    let gpu_indices = std::slice::from_raw_parts_mut(
+                        (*slice).as_mut_ptr() as *mut u32,
+                        (*slice).len() / size_of::<u32>(),
                     );
-                    (*slice).copy_from_slice(indices_bytes);
+                    gpu_indices.copy_from_slice(indices);
                 }
                 #[repr(C, packed)]
                 struct Options {
@@ -596,7 +605,7 @@ fn main() -> Result<()> {
     let drawer = Drawer::new(
         unsafe { &mut DRAWER_VERTEX_MEMORY },
         unsafe { &mut DRAWER_INDEX_MEMORY },
-        [2048, 2048],
+        [GLYPH_ATLAS_RESOLUTION, GLYPH_ATLAS_RESOLUTION],
         renderer.get_glyph_atlas_descriptor(),
     );
     let ui = UiState::new(Rc::new(Face::from_font(&ui_font, 36.0)));

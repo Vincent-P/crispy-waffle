@@ -17,6 +17,6 @@ optick = { version = "1.3.4", optional = true }
 tracy-client = { version = "0.13.1", optional = true }
 
 [features]
-default = ["tracy"]
+default = []
 optick = ["dep:optick"]
 tracy = ["dep:tracy-client"]
