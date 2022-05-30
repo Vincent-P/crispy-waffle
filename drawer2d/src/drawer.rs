@@ -18,10 +18,10 @@ impl ColorU32 {
     }
 
     pub fn from_f32(r: f32, g: f32, b: f32, a: f32) -> Self {
-        let r = (r / 255.0) as u32;
-        let g = (g / 255.0) as u32;
-        let b = (b / 255.0) as u32;
-        let a = (a / 255.0) as u32;
+        let r = (r * 255.0) as u32;
+        let g = (g * 255.0) as u32;
+        let b = (b * 255.0) as u32;
+        let a = (a * 255.0) as u32;
         Self::from_u32(r, g, b, a)
     }
 
@@ -133,6 +133,28 @@ impl PrimitiveIndex {
     }
 }
 
+pub struct TextGlyph {
+    placement: swash::zeno::Placement,
+    atlas_pos: [i32; 2],
+    offsets: [f32; 2],
+    advance: f32,
+}
+
+pub struct TextCluster {
+    glyphs: Vec<TextGlyph>,
+}
+
+pub struct TextRun {
+    metrics: swash::Metrics,
+    glyph_clusters: Vec<TextCluster>,
+    glyph_count: usize,
+}
+
+pub struct TextLayout {
+    size: [f32; 2],
+    glyph_positions: Vec<[f32; 2]>,
+}
+
 pub struct Drawer<'a> {
     vertex_buffer: &'a mut [u8],
     index_buffer: &'a mut [u32],
@@ -188,7 +210,7 @@ impl<'a> Drawer<'a> {
     }
 
     pub fn draw_colored_rect(&mut self, rect: Rect, i_clip_rect: u32, color: ColorU32) {
-        let i_rect = Self::begin_primitive::<ColoredRect>(&mut self.vertex_byte_offset);
+        let i_first_rect = Self::begin_primitive::<ColoredRect>(&mut self.vertex_byte_offset);
         let vertices = Self::get_primitive_slice::<ColoredRect>(
             self.vertex_buffer,
             self.vertex_byte_offset,
@@ -206,7 +228,7 @@ impl<'a> Drawer<'a> {
         const CORNERS: [u32; 6] = [0, 1, 2, 2, 3, 0];
         for i_corner in 0..CORNERS.len() {
             indices[i_corner] = PrimitiveIndex::new()
-                .index(i_rect)
+                .index(i_first_rect)
                 .corner(CORNERS[i_corner])
                 .i_type(PrimitiveType::ColorRect);
         }
@@ -222,45 +244,131 @@ impl<'a> Drawer<'a> {
         i_clip_rect: u32,
         texture_descriptor: u32,
     ) {
-        Self::draw_textured_rect_impl(
+        Self::draw_textured_rects_impl(
             &mut self.vertex_byte_offset,
             self.vertex_buffer,
             &mut self.index_offset,
             self.index_buffer,
-            rect,
-            uv,
-            i_clip_rect,
-            texture_descriptor,
+            &[(rect, uv, i_clip_rect, texture_descriptor)],
         )
     }
 
-    pub fn draw_label(&mut self, face: &Face, label: &str, rect: Rect, i_clip_rect: u32) {
+    pub fn shape_text(&mut self, face: &Face, text: &str) -> TextRun {
         let mut shaper = self
             .shape_context
             .builder(face.font_ref)
             .size(face.get_size())
             .build();
-        shaper.add_str(label);
+        shaper.add_str(text);
+        let mut text_run = TextRun {
+            metrics: shaper.metrics(),
+            glyph_clusters: Vec::with_capacity(8),
+            glyph_count: 0,
+        };
 
-        let mut cursor: f32 = 0.0;
-        let metrics = shaper.metrics();
         shaper.shape_with(|glyph_cluster| {
+            let mut cluster = TextCluster {
+                glyphs: Vec::with_capacity(glyph_cluster.glyphs.len()),
+            };
             for glyph in glyph_cluster.glyphs {
                 let (glyph_atlas_pos, glyph_image) = self.glyph_cache.queue_glyph(face, glyph.id);
-                let glyph_placement = glyph_image.placement;
+
+                cluster.glyphs.push(TextGlyph {
+                    placement: glyph_image.placement,
+                    atlas_pos: glyph_atlas_pos,
+                    offsets: [glyph.x, glyph.y],
+                    advance: glyph.advance,
+                });
+            }
+
+            text_run.glyph_count += cluster.glyphs.len();
+            text_run.glyph_clusters.push(cluster);
+        });
+
+        text_run
+    }
+
+    pub fn layout_text(text_run: &TextRun, width_constraint: Option<f32>) -> TextLayout {
+        let mut layout = TextLayout {
+            size: [0.0, 0.0],
+            glyph_positions: Vec::new(),
+        };
+
+        let line_height =
+            text_run.metrics.ascent + text_run.metrics.descent + text_run.metrics.leading;
+
+        let mut cursor_x: f32 = 0.0;
+        let mut cursor_y: f32 = text_run.metrics.ascent;
+
+        for cluster in &text_run.glyph_clusters {
+            for glyph in &cluster.glyphs {
+                let glyph_top_left = [
+                    cursor_x + glyph.offsets[0] + (glyph.placement.left as f32),
+                    cursor_y + glyph.offsets[1] - (glyph.placement.top as f32),
+                ];
+
+                let glyph_size = [glyph.placement.width as f32, glyph.placement.height as f32];
+
+                cursor_x += glyph.advance;
+
+                // Break to a new line if the current glyph is outside the constraint
+                match width_constraint {
+                    Some(constraint) if glyph_top_left[0] + glyph_size[0] > constraint => {
+                        layout.size[0] = layout.size[0].max(cursor_x);
+                        cursor_x = 0.0;
+                        cursor_y += line_height;
+                    }
+                    _ => {}
+                }
+
+                layout.glyph_positions.push(glyph_top_left);
+            }
+        }
+
+        layout.size[0] = layout.size[0].max(cursor_x);
+        layout.size[1] = cursor_y + text_run.metrics.descent;
+
+        layout
+    }
+
+    pub fn draw_label(&mut self, face: &Face, label: &str, rect: Rect, i_clip_rect: u32) {
+        let text_run = self.shape_text(face, label);
+        let text_layout = Self::layout_text(&text_run, None);
+
+        let mut centered_text = rect;
+        centered_text.pos[0] += (centered_text.size[0] - text_layout.size[0]) * 0.5;
+        centered_text.pos[1] += (centered_text.size[1] - text_layout.size[1]) * 0.5;
+        centered_text.size = text_layout.size;
+
+        self.draw_text_run(&text_run, &text_layout, centered_text, i_clip_rect);
+    }
+
+    pub fn draw_text_run(
+        &mut self,
+        text_run: &TextRun,
+        text_layout: &TextLayout,
+        rect: Rect,
+        i_clip_rect: u32,
+    ) {
+        let mut rects = Vec::new();
+
+        let mut i_glyph = 0;
+        for cluster in &text_run.glyph_clusters {
+            for glyph in &cluster.glyphs {
+                let glyph_position = text_layout.glyph_positions[i_glyph];
 
                 let rect = Rect {
                     pos: [
-                        cursor + rect.pos[0] + glyph.x + (glyph_placement.left as f32),
-                        rect.pos[1] + glyph.y - (glyph_placement.top as f32) + metrics.ascent,
+                        rect.pos[0] + glyph_position[0],
+                        rect.pos[1] + glyph_position[1],
                     ],
-                    size: [glyph_placement.width as f32, glyph_placement.height as f32],
+                    size: [glyph.placement.width as f32, glyph.placement.height as f32],
                 };
 
                 let glyph_uv = Rect {
                     pos: [
-                        (glyph_atlas_pos[0] as f32) / (self.glyph_cache.get_size()[0] as f32),
-                        (glyph_atlas_pos[1] as f32) / (self.glyph_cache.get_size()[1] as f32),
+                        (glyph.atlas_pos[0] as f32) / (self.glyph_cache.get_size()[0] as f32),
+                        (glyph.atlas_pos[1] as f32) / (self.glyph_cache.get_size()[1] as f32),
                     ],
                     size: [
                         (rect.size[0] as f32) / (self.glyph_cache.get_size()[0] as f32),
@@ -268,20 +376,18 @@ impl<'a> Drawer<'a> {
                     ],
                 };
 
-                Self::draw_textured_rect_impl(
-                    &mut self.vertex_byte_offset,
-                    self.vertex_buffer,
-                    &mut self.index_offset,
-                    self.index_buffer,
-                    rect,
-                    glyph_uv,
-                    0,
-                    self.glyph_atlas_descriptor,
-                );
-
-                cursor += glyph.advance;
+                rects.push((rect, glyph_uv, i_clip_rect, self.glyph_atlas_descriptor));
+                i_glyph += 1;
             }
-        });
+        }
+
+        Self::draw_textured_rects_impl(
+            &mut self.vertex_byte_offset,
+            self.vertex_buffer,
+            &mut self.index_offset,
+            self.index_buffer,
+            &rects,
+        );
     }
 }
 
@@ -323,38 +429,41 @@ impl<'a> Drawer<'a> {
         }
     }
 
-    pub fn draw_textured_rect_impl(
+    pub fn draw_textured_rects_impl(
         vertex_byte_offset: &mut usize,
         vertex_buffer: &mut [u8],
         index_offset: &mut usize,
         index_buffer: &mut [u32],
-        rect: Rect,
-        uv: Rect,
-        i_clip_rect: u32,
-        texture_descriptor: u32,
+        // position, uv, i_clip_rect, texture_descriptor
+        rects: &[(Rect, Rect, u32, u32)],
     ) {
-        let i_rect = Self::begin_primitive::<TexturedRect>(vertex_byte_offset);
-        let vertices =
-            Self::get_primitive_slice::<TexturedRect>(vertex_buffer, *vertex_byte_offset, 1);
+        let i_first_rect = Self::begin_primitive::<TexturedRect>(vertex_byte_offset);
+        let vertices = Self::get_primitive_slice::<TexturedRect>(
+            vertex_buffer,
+            *vertex_byte_offset,
+            rects.len(),
+        );
         let indices = Self::get_index_slice(index_buffer, *index_offset);
 
-        vertices[0] = TexturedRect {
-            rect,
-            uv,
-            texture_descriptor,
-            i_clip_rect,
-            padding: [0, 0],
-        };
-
         const CORNERS: [u32; 6] = [0, 1, 2, 2, 3, 0];
-        for i_corner in 0..CORNERS.len() {
-            indices[i_corner] = PrimitiveIndex::new()
-                .index(i_rect)
-                .corner(CORNERS[i_corner])
-                .i_type(PrimitiveType::TexturedRect);
+        for (i_rect, &(rect, uv, i_clip_rect, texture_descriptor)) in rects.iter().enumerate() {
+            vertices[i_rect] = TexturedRect {
+                rect,
+                uv,
+                texture_descriptor,
+                i_clip_rect,
+                padding: [0, 0],
+            };
+
+            for i_corner in 0..CORNERS.len() {
+                indices[i_rect * CORNERS.len() + i_corner] = PrimitiveIndex::new()
+                    .index(i_first_rect + i_rect)
+                    .corner(CORNERS[i_corner])
+                    .i_type(PrimitiveType::TexturedRect);
+            }
         }
 
-        *index_offset += CORNERS.len();
-        Self::end_primitive::<TexturedRect>(vertex_byte_offset, 1);
+        *index_offset += rects.len() * CORNERS.len();
+        Self::end_primitive::<TexturedRect>(vertex_byte_offset, rects.len());
     }
 }

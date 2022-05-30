@@ -106,6 +106,9 @@ impl GlyphCache {
                     * std::mem::size_of::<u32>()
         );
 
+        assert!(glyph_image.placement.width > 0);
+        assert!(glyph_image.placement.height > 0);
+
         // Find free space for the rendered glyph in the glyph atlas
         let mut alloc = self.atlas.allocate(etagere::size2(
             glyph_image.placement.width.try_into().unwrap(),

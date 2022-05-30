@@ -571,6 +571,17 @@ impl App<'_> {
             println!("button pressed!");
         }
 
+        self.ui.button(
+            &mut self.drawer,
+            UiButton {
+                label: "test2",
+                rect: Rect {
+                    pos: [50.0, 250.0],
+                    size: [50.0, 20.0],
+                },
+            },
+        );
+
         self.ui.end_frame();
     }
 
