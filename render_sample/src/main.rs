@@ -561,7 +561,7 @@ impl App<'_> {
         if self.ui.button(
             &mut self.drawer,
             UiButton {
-                label: "test",
+                label: "TtegtI",
                 rect: Rect {
                     pos: [250.0, 250.0],
                     size: [150.0, 150.0],

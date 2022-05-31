@@ -33,9 +33,9 @@ impl<'a> UiState<'a> {
             active: None,
             gen: 0,
             theme: UiTheme {
-                button_bg_color: ColorU32(0xFF0000FF),
-                button_pressed_bg_color: ColorU32(0xFF00FF00),
-                button_hover_bg_color: ColorU32(0xFFFF0000),
+                button_bg_color: ColorU32::from_f32(0.43, 0.23, 0.12, 1.0),
+                button_pressed_bg_color: ColorU32::from_f32(0.13, 0.23, 0.42, 1.0),
+                button_hover_bg_color: ColorU32::from_f32(0.23, 0.43, 0.12, 1.0),
                 ui_face,
             },
             inputs: UiInputs {

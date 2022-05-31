@@ -14,7 +14,7 @@ impl ColorU32 {
         let g = g & 0xFF;
         let b = b & 0xFF;
         let a = a & 0xFF;
-        Self((((((r << 8) | g) << 8) | b) << 8) | a)
+        Self((((((a << 8) | b) << 8) | g) << 8) | r)
     }
 
     pub fn from_f32(r: f32, g: f32, b: f32, a: f32) -> Self {
@@ -23,6 +23,25 @@ impl ColorU32 {
         let b = (b * 255.0) as u32;
         let a = (a * 255.0) as u32;
         Self::from_u32(r, g, b, a)
+    }
+
+    pub fn red() -> Self {
+        Self::from_f32(1.0, 0.0, 0.0, 1.0)
+    }
+    pub fn green() -> Self {
+        Self::from_f32(0.0, 1.0, 0.0, 1.0)
+    }
+    pub fn blue() -> Self {
+        Self::from_f32(0.0, 0.0, 1.0, 1.0)
+    }
+    pub fn cyan() -> Self {
+        Self::from_f32(0.0, 1.0, 1.0, 1.0)
+    }
+    pub fn magenta() -> Self {
+        Self::from_f32(1.0, 0.0, 1.0, 1.0)
+    }
+    pub fn yellow() -> Self {
+        Self::from_f32(1.0, 1.0, 0.0, 1.0)
     }
 
     pub fn get_a(self) -> u32 {
@@ -210,31 +229,50 @@ impl<'a> Drawer<'a> {
     }
 
     pub fn draw_colored_rect(&mut self, rect: Rect, i_clip_rect: u32, color: ColorU32) {
-        let i_first_rect = Self::begin_primitive::<ColoredRect>(&mut self.vertex_byte_offset);
-        let vertices = Self::get_primitive_slice::<ColoredRect>(
-            self.vertex_buffer,
-            self.vertex_byte_offset,
-            1,
-        );
-        let indices = Self::get_index_slice(self.index_buffer, self.index_offset);
-
-        vertices[0] = ColoredRect {
-            rect,
-            color,
-            i_clip_rect,
-            padding: [0, 0],
+        const ANCHOR_SIZE: f32 = 6.0;
+        let anchor_color = ColorU32::green();
+        let anchor_top = Rect {
+            pos: [
+                rect.pos[0] + 0.5 * rect.size[0] - 0.5 * ANCHOR_SIZE,
+                rect.pos[1] - 0.5 * ANCHOR_SIZE,
+            ],
+            size: [ANCHOR_SIZE, ANCHOR_SIZE],
+        };
+        let anchor_bottom = Rect {
+            pos: [
+                rect.pos[0] + 0.5 * rect.size[0] - 0.5 * ANCHOR_SIZE,
+                rect.pos[1] + rect.size[1] - 0.5 * ANCHOR_SIZE,
+            ],
+            size: [ANCHOR_SIZE, ANCHOR_SIZE],
+        };
+        let anchor_left = Rect {
+            pos: [
+                rect.pos[0] - 0.5 * ANCHOR_SIZE,
+                rect.pos[1] + 0.5 * rect.size[1] - 0.5 * ANCHOR_SIZE,
+            ],
+            size: [ANCHOR_SIZE, ANCHOR_SIZE],
+        };
+        let anchor_right = Rect {
+            pos: [
+                rect.pos[0] + rect.size[0] - 0.5 * ANCHOR_SIZE,
+                rect.pos[1] + 0.5 * rect.size[1] - 0.5 * ANCHOR_SIZE,
+            ],
+            size: [ANCHOR_SIZE, ANCHOR_SIZE],
         };
 
-        const CORNERS: [u32; 6] = [0, 1, 2, 2, 3, 0];
-        for i_corner in 0..CORNERS.len() {
-            indices[i_corner] = PrimitiveIndex::new()
-                .index(i_first_rect)
-                .corner(CORNERS[i_corner])
-                .i_type(PrimitiveType::ColorRect);
-        }
-
-        self.index_offset += CORNERS.len();
-        Self::end_primitive::<ColoredRect>(&mut self.vertex_byte_offset, 1);
+        Self::draw_colored_rects_impl(
+            &mut self.vertex_byte_offset,
+            self.vertex_buffer,
+            &mut self.index_offset,
+            self.index_buffer,
+            &[
+                (rect, i_clip_rect, color),
+                (anchor_top, i_clip_rect, anchor_color),
+                (anchor_bottom, i_clip_rect, anchor_color),
+                (anchor_left, i_clip_rect, anchor_color),
+                (anchor_right, i_clip_rect, anchor_color),
+            ],
+        )
     }
 
     pub fn draw_textured_rect(
@@ -339,6 +377,37 @@ impl<'a> Drawer<'a> {
         centered_text.pos[0] += (centered_text.size[0] - text_layout.size[0]) * 0.5;
         centered_text.pos[1] += (centered_text.size[1] - text_layout.size[1]) * 0.5;
         centered_text.size = text_layout.size;
+
+        let ascent = Rect {
+            pos: [centered_text.pos[0], centered_text.pos[1]],
+            size: [centered_text.size[0], 1.0],
+        };
+        let baseline = Rect {
+            pos: [
+                centered_text.pos[0],
+                centered_text.pos[1] + text_run.metrics.ascent,
+            ],
+            size: [centered_text.size[0], 1.0],
+        };
+        let descent = Rect {
+            pos: [
+                centered_text.pos[0],
+                centered_text.pos[1] + text_run.metrics.ascent + text_run.metrics.descent,
+            ],
+            size: [centered_text.size[0], 1.0],
+        };
+
+        Self::draw_colored_rects_impl(
+            &mut self.vertex_byte_offset,
+            self.vertex_buffer,
+            &mut self.index_offset,
+            self.index_buffer,
+            &[
+                (ascent, i_clip_rect, ColorU32::magenta()),
+                (baseline, i_clip_rect, ColorU32::magenta()),
+                (descent, i_clip_rect, ColorU32::magenta()),
+            ],
+        );
 
         self.draw_text_run(&text_run, &text_layout, centered_text, i_clip_rect);
     }
@@ -465,5 +534,42 @@ impl<'a> Drawer<'a> {
 
         *index_offset += rects.len() * CORNERS.len();
         Self::end_primitive::<TexturedRect>(vertex_byte_offset, rects.len());
+    }
+
+    pub fn draw_colored_rects_impl(
+        vertex_byte_offset: &mut usize,
+        vertex_buffer: &mut [u8],
+        index_offset: &mut usize,
+        index_buffer: &mut [u32],
+        // position, uv, i_clip_rect, texture_descriptor
+        rects: &[(Rect, u32, ColorU32)],
+    ) {
+        let i_first_rect = Self::begin_primitive::<ColoredRect>(vertex_byte_offset);
+        let vertices = Self::get_primitive_slice::<ColoredRect>(
+            vertex_buffer,
+            *vertex_byte_offset,
+            rects.len(),
+        );
+        let indices = Self::get_index_slice(index_buffer, *index_offset);
+
+        const CORNERS: [u32; 6] = [0, 1, 2, 2, 3, 0];
+        for (i_rect, &(rect, i_clip_rect, color)) in rects.iter().enumerate() {
+            vertices[i_rect] = ColoredRect {
+                rect,
+                i_clip_rect,
+                color,
+                padding: [0, 0],
+            };
+
+            for i_corner in 0..CORNERS.len() {
+                indices[i_rect * CORNERS.len() + i_corner] = PrimitiveIndex::new()
+                    .index(i_first_rect + i_rect)
+                    .corner(CORNERS[i_corner])
+                    .i_type(PrimitiveType::ColorRect);
+            }
+        }
+
+        *index_offset += rects.len() * CORNERS.len();
+        Self::end_primitive::<ColoredRect>(vertex_byte_offset, rects.len());
     }
 }
