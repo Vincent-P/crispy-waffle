@@ -9,39 +9,48 @@ use swash::shape::ShapeContext;
 pub struct ColorU32(pub u32);
 
 impl ColorU32 {
-    pub fn from_u32(r: u32, g: u32, b: u32, a: u32) -> Self {
-        let r = r & 0xFF;
-        let g = g & 0xFF;
-        let b = b & 0xFF;
-        let a = a & 0xFF;
+    pub fn from_u8(r: u8, g: u8, b: u8, a: u8) -> Self {
+        let r = r as u32;
+        let g = g as u32;
+        let b = b as u32;
+        let a = a as u32;
         Self((((((a << 8) | b) << 8) | g) << 8) | r)
     }
 
     pub fn from_f32(r: f32, g: f32, b: f32, a: f32) -> Self {
-        let r = (r * 255.0) as u32;
-        let g = (g * 255.0) as u32;
-        let b = (b * 255.0) as u32;
-        let a = (a * 255.0) as u32;
-        Self::from_u32(r, g, b, a)
+        let r = (r * 255.0) as u8;
+        let g = (g * 255.0) as u8;
+        let b = (b * 255.0) as u8;
+        let a = (a * 255.0) as u8;
+        Self::from_u8(r, g, b, a)
     }
 
     pub fn red() -> Self {
         Self::from_f32(1.0, 0.0, 0.0, 1.0)
     }
+
     pub fn green() -> Self {
         Self::from_f32(0.0, 1.0, 0.0, 1.0)
     }
+
     pub fn blue() -> Self {
         Self::from_f32(0.0, 0.0, 1.0, 1.0)
     }
+
     pub fn cyan() -> Self {
         Self::from_f32(0.0, 1.0, 1.0, 1.0)
     }
+
     pub fn magenta() -> Self {
         Self::from_f32(1.0, 0.0, 1.0, 1.0)
     }
+
     pub fn yellow() -> Self {
         Self::from_f32(1.0, 1.0, 0.0, 1.0)
+    }
+
+    pub fn greyscale(intensity: u8) -> Self {
+        Self::from_u8(intensity, intensity, intensity, 255)
     }
 
     pub fn get_a(self) -> u32 {
@@ -373,10 +382,7 @@ impl<'a> Drawer<'a> {
         let text_run = self.shape_text(face, label);
         let text_layout = Self::layout_text(&text_run, None);
 
-        let mut centered_text = rect;
-        centered_text.pos[0] += (centered_text.size[0] - text_layout.size[0]) * 0.5;
-        centered_text.pos[1] += (centered_text.size[1] - text_layout.size[1]) * 0.5;
-        centered_text.size = text_layout.size;
+        let centered_text = Rect::center(rect, text_layout.size);
 
         let ascent = Rect {
             pos: [centered_text.pos[0], centered_text.pos[1]],

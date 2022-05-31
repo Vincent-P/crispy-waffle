@@ -14,7 +14,7 @@ impl Rect {
     }
 
     pub fn outset(&self, margin: f32) -> Self {
-        Rect {
+        Self {
             pos: [self.pos[0] - margin, self.pos[1] - margin],
             size: [self.size[0] + 2.0 * margin, self.size[1] + 2.0 * margin],
         }
@@ -22,5 +22,15 @@ impl Rect {
 
     pub fn inset(&self, margin: f32) -> Self {
         self.outset(-margin)
+    }
+
+    pub fn center(container: Self, element_size: [f32; 2]) -> Self {
+        Self {
+            pos: [
+                container.pos[0] + (container.size[0] - element_size[0]) / 2.0,
+                container.pos[1] + (container.size[1] - element_size[1]) / 2.0,
+            ],
+            size: element_size,
+        }
     }
 }

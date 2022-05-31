@@ -5,7 +5,7 @@ pub struct UiTheme<'a> {
     button_bg_color: ColorU32,
     button_pressed_bg_color: ColorU32,
     button_hover_bg_color: ColorU32,
-    ui_face: Rc<Face<'a>>,
+    face: Rc<Face<'a>>,
 }
 
 pub struct UiInputs {
@@ -36,13 +36,21 @@ impl<'a> UiState<'a> {
                 button_bg_color: ColorU32::from_f32(0.43, 0.23, 0.12, 1.0),
                 button_pressed_bg_color: ColorU32::from_f32(0.13, 0.23, 0.42, 1.0),
                 button_hover_bg_color: ColorU32::from_f32(0.23, 0.43, 0.12, 1.0),
-                ui_face,
+                face: ui_face,
             },
             inputs: UiInputs {
                 mouse_pos: [0.0, 0.0],
                 left_mouse_button_pressed: false,
             },
         }
+    }
+
+    pub fn face(&self) -> &Face {
+        &self.theme.face
+    }
+
+    pub fn mouse_position(&self) -> [f32; 2] {
+        self.inputs.mouse_pos
     }
 
     fn make_id(&mut self) -> u64 {
@@ -100,7 +108,7 @@ impl<'a> UiState<'a> {
 
         drawer.draw_colored_rect(button.rect, 0, color);
 
-        drawer.draw_label(&self.theme.ui_face, button.label, button.rect, 0);
+        drawer.draw_label(&self.theme.face, button.label, button.rect, 0);
 
         result
     }

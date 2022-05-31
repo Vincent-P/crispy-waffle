@@ -537,53 +537,36 @@ impl App<'_> {
         self.drawer.clear();
         self.ui.new_frame();
 
-        let pos = [viewport_size[0] * 0.25, 10.0];
-        let size = [viewport_size[0] * 0.5, 10.0];
+        let fullscreen = Rect {
+            pos: [0.0, 0.0],
+            size: viewport_size,
+        };
 
-        /*
-        self.drawer
-            .draw_colored_rect(Rect { pos, size }, 0, ColorU32(0xFF000000));
-        self.drawer.draw_colored_rect(
-            Rect {
-                pos: [35.0, 35.0],
-                size: [50.0, 50.0],
-            },
+        self.drawer.draw_label(
+            self.ui.face(),
+            &format!(
+                "mouse{}x{}",
+                self.ui.mouse_position()[0],
+                self.ui.mouse_position()[1]
+            ),
+            fullscreen,
             0,
-            ColorU32(0xFF0000FF),
         );
-        self.drawer.draw_colored_rect(
-            Rect {
-                pos: [50.0, 50.0],
-                size: [250.0, 250.0],
-            },
-            0,
-            ColorU32(0xFF00FF00),
-        );
-        */
+
+        let button_width = (viewport_size[0] * 0.33).max(400.0);
 
         if self.ui.button(
             &mut self.drawer,
             UiButton {
-                label: "TtegtI",
+                label: &format!("TtegtI({}x{})", button_width, 50.0),
                 rect: Rect {
                     pos: [250.0, 250.0],
-                    size: [150.0, 150.0],
+                    size: [button_width, 50.0],
                 },
             },
         ) {
             println!("button pressed!");
         }
-
-        self.ui.button(
-            &mut self.drawer,
-            UiButton {
-                label: "test2",
-                rect: Rect {
-                    pos: [50.0, 250.0],
-                    size: [50.0, 20.0],
-                },
-            },
-        );
 
         self.ui.end_frame();
     }
