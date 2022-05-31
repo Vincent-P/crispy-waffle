@@ -91,6 +91,7 @@ layout(set = SHADER_UNIFORM_SET, binding = 0) uniform Options {
     float2 translation;
     u32 vertices_descriptor_index;
     u32 primitive_bytes_offset;
+    u32 glyph_atlas_descriptor;
 };
 
 bool is_in_rect(float2 pos, Rect rect)
@@ -115,7 +116,11 @@ float4 textured_rect(u32 i_primitive, u32 corner, float2 uv)
     u32 primitive_offset = primitive_bytes_offset / sizeof_textured_rect;
     TexturedRect rect = global_buffers_textured_rects[vertices_descriptor_index].rects[primitive_offset + i_primitive];
 
-	return texture(global_textures[nonuniformEXT(rect.texture_descriptor)], uv);
+	float alpha_mask = texture(global_textures[glyph_atlas_descriptor], uv).r;
+	float4 color = float4(1.0, 1.0, 1.0, 1.0);
+	color.a = alpha_mask;
+	color.rgb *= color.a;
+	return color;
 }
 
 layout(location = 0) in float2 i_uv;

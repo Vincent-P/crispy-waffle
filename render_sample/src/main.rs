@@ -73,7 +73,7 @@ mod profile {
 const FRAME_QUEUE_LENGTH: usize = 2;
 static mut DRAWER_VERTEX_MEMORY: [u8; 64 << 10] = [0; 64 << 10];
 static mut DRAWER_INDEX_MEMORY: [u32; 8 << 10] = [0; 8 << 10];
-const GLYPH_ATLAS_RESOLUTION: i32 = 1024;
+const GLYPH_ATLAS_RESOLUTION: i32 = 256;
 
 struct Renderer {
     instance: vulkan::Instance,
@@ -238,6 +238,7 @@ impl Renderer {
 
         let glyph_atlas = device.create_image(vulkan::ImageSpec {
             size: [GLYPH_ATLAS_RESOLUTION, GLYPH_ATLAS_RESOLUTION, 1],
+            format: vk::Format::R8_UNORM,
             ..Default::default()
         })?;
 
@@ -459,6 +460,7 @@ impl Renderer {
                     pub translation: [f32; 2],
                     pub vertices_descriptor_index: u32,
                     pub primitive_bytes_offset: u32,
+                    pub glyph_atlas_descriptor: u32,
                 }
 
                 let options = bindings::bind_shader_options(
@@ -482,6 +484,7 @@ impl Renderer {
                             .get(self.dynamic_vertex_buffer.buffer)
                             .storage_idx,
                         primitive_bytes_offset: vertices_offset,
+                        glyph_atlas_descriptor: self.get_glyph_atlas_descriptor(),
                     };
                 }
                 ctx.bind_index_buffer(

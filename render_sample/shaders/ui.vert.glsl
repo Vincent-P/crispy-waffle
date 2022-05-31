@@ -88,26 +88,27 @@ void color_rect(out float2 o_position, out float2 o_uv, u32 i_primitive, u32 cor
 	u32 primitive_offset = primitive_bytes_offset / sizeof_color_rect;
 	ColorRect rect = global_buffers_color_rects[vertices_descriptor_index].rects[primitive_offset + i_primitive];
 
-	o_position = rect.rect.position;
+	o_position = floor(rect.rect.position);
 	o_uv = float2(0.0);
 
-	// 0 - 3
-	// |   |
+
 	// 1 - 2
-	if (corner == 1)
+	// |   |
+	// 0 - 3
+	if (corner == 0)
 	{
 		o_position.y += rect.rect.size.y;
 		o_uv.y = 1.0f;
 	}
 	else if (corner == 2)
 	{
-		o_position += rect.rect.size;
-		o_uv = float2(1.0f);
+		o_position.x += rect.rect.size.x;
+		o_uv.x = 1.0f;
 	}
 	else if (corner == 3)
 	{
-		o_position.x += rect.rect.size.x;
-		o_uv.x = 1.0f;
+		o_position += rect.rect.size;
+		o_uv = float2(1.0f);
 	}
 }
 
@@ -116,7 +117,7 @@ void textured_rect(out float2 o_position, out float2 o_uv, u32 i_primitive, u32 
 	u32 primitive_offset = primitive_bytes_offset / sizeof_textured_rect;
 	TexturedRect rect = global_buffers_textured_rects[vertices_descriptor_index].rects[primitive_offset + i_primitive];
 
-	o_position = rect.rect.position;
+	o_position = floor(rect.rect.position);
 	o_uv = rect.uv.position;
 
 	// 0 - 3

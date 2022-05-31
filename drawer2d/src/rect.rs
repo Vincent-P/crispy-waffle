@@ -12,4 +12,15 @@ impl Rect {
             && self.pos[1] <= point[1]
             && point[1] <= self.pos[1] + self.size[1]
     }
+
+    pub fn outset(&self, margin: f32) -> Self {
+        Rect {
+            pos: [self.pos[0] - margin, self.pos[1] - margin],
+            size: [self.size[0] + 2.0 * margin, self.size[1] + 2.0 * margin],
+        }
+    }
+
+    pub fn inset(&self, margin: f32) -> Self {
+        self.outset(-margin)
+    }
 }

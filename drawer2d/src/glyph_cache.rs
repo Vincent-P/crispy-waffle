@@ -100,11 +100,6 @@ impl GlyphCache {
 
         // Render it
         let glyph_image = render_glyph(&mut self.scale_context, face, glyph_id).unwrap();
-        assert!(
-            glyph_image.data.len()
-                == (glyph_image.placement.width * glyph_image.placement.height) as usize
-                    * std::mem::size_of::<u32>()
-        );
 
         assert!(glyph_image.placement.width > 0);
         assert!(glyph_image.placement.height > 0);
@@ -257,7 +252,7 @@ pub fn render_glyph(
         Source::Outline,
     ])
     // Select a subpixel format
-    .format(Format::Subpixel)
+    .format(Format::Alpha)
     // Apply the fractional offset
     .offset(offset)
     // Render the image

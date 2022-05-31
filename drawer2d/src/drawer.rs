@@ -363,8 +363,8 @@ impl<'a> Drawer<'a> {
             }
         }
 
-        layout.size[0] = layout.size[0].max(cursor_x);
-        layout.size[1] = cursor_y + text_run.metrics.descent;
+        layout.size[0] = layout.size[0].max(cursor_x).ceil();
+        layout.size[1] = (cursor_y + text_run.metrics.descent).ceil();
 
         layout
     }
@@ -514,7 +514,7 @@ impl<'a> Drawer<'a> {
         );
         let indices = Self::get_index_slice(index_buffer, *index_offset);
 
-        const CORNERS: [u32; 6] = [0, 1, 2, 2, 3, 0];
+        const CORNERS: [u32; 6] = [0, 1, 2, 0, 2, 3];
         for (i_rect, &(rect, uv, i_clip_rect, texture_descriptor)) in rects.iter().enumerate() {
             vertices[i_rect] = TexturedRect {
                 rect,
@@ -552,7 +552,7 @@ impl<'a> Drawer<'a> {
         );
         let indices = Self::get_index_slice(index_buffer, *index_offset);
 
-        const CORNERS: [u32; 6] = [0, 1, 2, 2, 3, 0];
+        const CORNERS: [u32; 6] = [0, 1, 2, 0, 2, 3];
         for (i_rect, &(rect, i_clip_rect, color)) in rects.iter().enumerate() {
             vertices[i_rect] = ColoredRect {
                 rect,
