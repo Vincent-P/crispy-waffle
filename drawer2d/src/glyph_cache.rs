@@ -12,8 +12,8 @@ pub type GlyphImage = Image;
 // Per-face cache
 struct GlyphEntry {
     pub id: GlyphId,
-    pub alloc_id: etagere::AllocId,
-    pub image: Option<GlyphImage>,
+    pub alloc_id: Option<etagere::AllocId>,
+    pub image: GlyphImage,
 }
 
 struct FaceCache {
@@ -55,54 +55,38 @@ impl GlyphCache {
         }
     }
 
-    // Returns the pixel offset from the top left corner and atlas uv for a specified face and glyph
-    pub fn queue_glyph(&mut self, face: &Face, glyph_id: GlyphId) -> ([i32; 2], &GlyphImage) {
-        // Get the face hash
-        let face_hash = {
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            face.font_ref.key.hash(&mut hasher);
-            hasher.write_u32(face.size);
-            hasher.finish()
-        };
-
-        // Find the glyph in the face cache
-        if let Some(i_glyph) = self
-            .face_caches
-            .entry(face_hash)
-            .or_insert_with(FaceCache::new)
-            .glyphs
+    // Find an atlas allocation and set it as most recently used
+    fn find_alloc<'a>(
+        atlas_lru: &mut VecDeque<etagere::AllocId>,
+        atlas_allocations: &'a HashMap<etagere::AllocId, AllocMetadata>,
+        alloc_id: etagere::AllocId,
+    ) -> &'a AllocMetadata {
+        // Find the position of the glyph in the LRU queue (Very bad)
+        let i_lru = atlas_lru
             .iter()
-            .position(|glyph| glyph.id == glyph_id)
-        {
-            // The glyph was is already in the cache, put it at the top
-            // of the LRU queue
-            let glyph_entry = &self.face_caches.get_mut(&face_hash).unwrap().glyphs[i_glyph];
+            .position(|lru_alloc_id| *lru_alloc_id == alloc_id)
+            .unwrap();
 
-            // Find the position of the glyph in the LRU queue (Very bad)
-            let i_lru = self
-                .atlas_lru
-                .iter()
-                .position(|alloc_id| *alloc_id == glyph_entry.alloc_id)
-                .unwrap();
+        // Remove it (Very bad, shifts all elements after it...)
+        atlas_lru.remove(i_lru);
 
-            // Remove it (Very bad, shifts all elements after it...)
-            self.atlas_lru.remove(i_lru);
+        // Put it back at the most recently used slot
+        atlas_lru.push_back(alloc_id);
 
-            // Put it back at the most recently used slot
-            self.atlas_lru.push_back(glyph_entry.alloc_id);
+        atlas_allocations.get(&alloc_id).unwrap()
+    }
 
-            let glyph_alloc = self.atlas_allocations.get(&glyph_entry.alloc_id).unwrap();
-            let glyph_atlas_pos = [glyph_alloc.rectangle.min.x, glyph_alloc.rectangle.min.y];
-            return (glyph_atlas_pos, glyph_entry.image.as_ref().unwrap());
+    // Alloc a new glyph to the atlas, returns None if the glyph image is zero-sized
+    fn alloc_glyph(
+        &mut self,
+        face_hash: u64,
+        glyph_image: &GlyphImage,
+    ) -> Option<etagere::Allocation> {
+        let has_empty_area = glyph_image.placement.width == 0 || glyph_image.placement.height == 0;
+
+        if has_empty_area {
+            return None;
         }
-
-        // The glyph was not found, rasterize it and insert it in the cache
-
-        // Render it
-        let glyph_image = render_glyph(&mut self.scale_context, face, glyph_id).unwrap();
-
-        assert!(glyph_image.placement.width > 0);
-        assert!(glyph_image.placement.height > 0);
 
         // Find free space for the rendered glyph in the glyph atlas
         let mut alloc = self.atlas.allocate(etagere::size2(
@@ -127,7 +111,7 @@ impl GlyphCache {
                 .glyphs;
             let i_glyph = face_glyph_entries
                 .iter()
-                .position(|entry| entry.alloc_id == lru_alloc)
+                .position(|entry| entry.alloc_id.is_some() && entry.alloc_id.unwrap() == lru_alloc)
                 .unwrap();
             face_glyph_entries.swap_remove(i_glyph);
 
@@ -141,6 +125,7 @@ impl GlyphCache {
                 glyph_image.placement.height.try_into().unwrap(),
             ));
         }
+
         let alloc = alloc.unwrap();
 
         // Add the created allocation on the LRU queue
@@ -155,19 +140,69 @@ impl GlyphCache {
             },
         );
 
+        Some(alloc)
+    }
+
+    // Returns the pixel offset from the top left corner and atlas coords for a specified face and glyph
+    pub fn queue_glyph(
+        &mut self,
+        face: &Face,
+        glyph_id: GlyphId,
+    ) -> (Option<[i32; 2]>, &GlyphImage) {
+        // Get the face hash
+        let face_hash = {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            face.font_ref.key.hash(&mut hasher);
+            hasher.write_u32(face.size);
+            hasher.finish()
+        };
+
+        if let Some(i_glyph) = self
+            .face_caches
+            .entry(face_hash)
+            .or_insert_with(FaceCache::new)
+            .glyphs
+            .iter()
+            .position(|glyph| glyph.id == glyph_id)
+        {
+            // The glyph was is already in the cache, put it at the top
+            // of the LRU queue and returns its infos
+            let entry = &self.face_caches.get(&face_hash).unwrap().glyphs[i_glyph];
+
+            let atlas_pos = entry.alloc_id.map(|alloc_id| {
+                let alloc =
+                    Self::find_alloc(&mut self.atlas_lru, &self.atlas_allocations, alloc_id);
+                [alloc.rectangle.min.x, alloc.rectangle.min.y]
+            });
+
+            return (atlas_pos, &entry.image);
+        }
+
+        // The glyph was not found, rasterize it and insert it in the cache
+
+        // Render it
+        let glyph_image = render_glyph(&mut self.scale_context, face, glyph_id).unwrap();
+
+        let (alloc_id, atlas_pos) = if let Some(alloc) = self.alloc_glyph(face_hash, &glyph_image) {
+            (
+                Some(alloc.id),
+                Some([alloc.rectangle.min.x, alloc.rectangle.min.y]),
+            )
+        } else {
+            (None, None)
+        };
+
         // Add it to its face cache
         let face_glyph_entries = &mut self.face_caches.get_mut(&face_hash).unwrap().glyphs;
         face_glyph_entries.push(GlyphEntry {
             id: glyph_id,
-            alloc_id: alloc.id,
-            image: Some(glyph_image),
+            alloc_id,
+            image: glyph_image,
         });
-        let entry = face_glyph_entries.last().unwrap();
 
         self.events.push(GlyphEvent::New(face_hash, glyph_id));
 
-        let glyph_atlas_pos = [alloc.rectangle.min.x, alloc.rectangle.min.y];
-        (glyph_atlas_pos, entry.image.as_ref().unwrap())
+        (atlas_pos, &face_glyph_entries.last().unwrap().image)
     }
 
     pub fn process_events<T>(&mut self, mut callback: T)
@@ -189,24 +224,18 @@ impl GlyphCache {
                 None
             };
 
-            let glyph_image = if let Some(entry) = glyph_entry {
-                entry.image.as_ref()
-            } else {
-                None
-            };
+            let glyph_image = glyph_entry.map(|entry| &entry.image);
 
-            let glyph_atlas_pos = if let Some(entry) = glyph_entry {
-                Some(
+            let glyph_atlas_pos = glyph_entry.and_then(|entry| {
+                entry.alloc_id.map(|alloc_id| {
                     self.atlas_allocations
-                        .get(&entry.alloc_id)
+                        .get(&alloc_id)
                         .unwrap()
                         .rectangle
                         .min
-                        .to_array(),
-                )
-            } else {
-                None
-            };
+                        .to_array()
+                })
+            });
 
             callback(event, glyph_image, glyph_atlas_pos);
         }

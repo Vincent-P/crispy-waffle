@@ -163,7 +163,7 @@ impl PrimitiveIndex {
 
 pub struct TextGlyph {
     placement: swash::zeno::Placement,
-    atlas_pos: [i32; 2],
+    atlas_pos: Option<[i32; 2]>,
     offsets: [f32; 2],
     advance: f32,
 }
@@ -318,11 +318,11 @@ impl<'a> Drawer<'a> {
                 glyphs: Vec::with_capacity(glyph_cluster.glyphs.len()),
             };
             for glyph in glyph_cluster.glyphs {
-                let (glyph_atlas_pos, glyph_image) = self.glyph_cache.queue_glyph(face, glyph.id);
+                let (atlas_pos, glyph_image) = self.glyph_cache.queue_glyph(face, glyph.id);
 
                 cluster.glyphs.push(TextGlyph {
                     placement: glyph_image.placement,
-                    atlas_pos: glyph_atlas_pos,
+                    atlas_pos,
                     offsets: [glyph.x, glyph.y],
                     advance: glyph.advance,
                 });
@@ -430,28 +430,31 @@ impl<'a> Drawer<'a> {
         let mut i_glyph = 0;
         for cluster in &text_run.glyph_clusters {
             for glyph in &cluster.glyphs {
-                let glyph_position = text_layout.glyph_positions[i_glyph];
+                // Glyphs that don't have a position in the atlas are zero-sized glyphs
+                if let Some(atlas_pos) = glyph.atlas_pos {
+                    let glyph_position = text_layout.glyph_positions[i_glyph];
 
-                let rect = Rect {
-                    pos: [
-                        rect.pos[0] + glyph_position[0],
-                        rect.pos[1] + glyph_position[1],
-                    ],
-                    size: [glyph.placement.width as f32, glyph.placement.height as f32],
-                };
+                    let rect = Rect {
+                        pos: [
+                            rect.pos[0] + glyph_position[0],
+                            rect.pos[1] + glyph_position[1],
+                        ],
+                        size: [glyph.placement.width as f32, glyph.placement.height as f32],
+                    };
 
-                let glyph_uv = Rect {
-                    pos: [
-                        (glyph.atlas_pos[0] as f32) / (self.glyph_cache.get_size()[0] as f32),
-                        (glyph.atlas_pos[1] as f32) / (self.glyph_cache.get_size()[1] as f32),
-                    ],
-                    size: [
-                        (rect.size[0] as f32) / (self.glyph_cache.get_size()[0] as f32),
-                        (rect.size[1] as f32) / (self.glyph_cache.get_size()[1] as f32),
-                    ],
-                };
+                    let glyph_uv = Rect {
+                        pos: [
+                            (atlas_pos[0] as f32) / (self.glyph_cache.get_size()[0] as f32),
+                            (atlas_pos[1] as f32) / (self.glyph_cache.get_size()[1] as f32),
+                        ],
+                        size: [
+                            (rect.size[0] as f32) / (self.glyph_cache.get_size()[0] as f32),
+                            (rect.size[1] as f32) / (self.glyph_cache.get_size()[1] as f32),
+                        ],
+                    };
 
-                rects.push((rect, glyph_uv, i_clip_rect, self.glyph_atlas_descriptor));
+                    rects.push((rect, glyph_uv, i_clip_rect, self.glyph_atlas_descriptor));
+                }
                 i_glyph += 1;
             }
         }

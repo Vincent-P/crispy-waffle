@@ -365,28 +365,27 @@ impl Renderer {
                     |cache_event, glyph_image, glyph_atlas_pos| {
                         // Copy new glyphs to the upload buffer
                         if let GlyphEvent::New(_, _) = cache_event {
-                            assert!(glyph_image.is_some());
-                            let image = glyph_image.unwrap();
+                            if let Some(atlas_pos) = glyph_atlas_pos {
+                                let image = glyph_image.unwrap();
+                                let (slice, offset) =
+                                    self.upload_buffer.allocate(image.data.len(), 256);
+                                unsafe {
+                                    (*slice).copy_from_slice(&image.data);
+                                }
 
-                            let (slice, offset) =
-                                self.upload_buffer.allocate(image.data.len(), 256);
-                            unsafe {
-                                (*slice).copy_from_slice(&image.data);
+                                let image_offset = [atlas_pos[0], atlas_pos[1], 0];
+
+                                glyphs_to_upload.push(vulkan::BufferImageCopy {
+                                    buffer_offset: offset as u64,
+                                    buffer_size: image.data.len() as u32,
+                                    image_offset,
+                                    image_extent: [
+                                        image.placement.width as u32,
+                                        image.placement.height as u32,
+                                        1,
+                                    ],
+                                });
                             }
-
-                            let image_offset =
-                                [glyph_atlas_pos.unwrap()[0], glyph_atlas_pos.unwrap()[1], 0];
-
-                            glyphs_to_upload.push(vulkan::BufferImageCopy {
-                                buffer_offset: offset as u64,
-                                buffer_size: image.data.len() as u32,
-                                image_offset,
-                                image_extent: [
-                                    image.placement.width as u32,
-                                    image.placement.height as u32,
-                                    1,
-                                ],
-                            });
                         }
                     },
                 );
@@ -544,11 +543,7 @@ impl App<'_> {
 
         self.drawer.draw_label(
             self.ui.face(),
-            &format!(
-                "mouse{}x{}",
-                self.ui.mouse_position()[0],
-                self.ui.mouse_position()[1]
-            ),
+            &format!("mouse {:?}", self.ui.mouse_position()),
             fullscreen,
             0,
         );
@@ -558,7 +553,7 @@ impl App<'_> {
         if self.ui.button(
             &mut self.drawer,
             UiButton {
-                label: &format!("TtegtI({}x{})", button_width, 50.0),
+                label: &format!("TtegtI     (  {}x{} )", button_width, 50.0),
                 rect: Rect {
                     pos: [250.0, 250.0],
                     size: [button_width, 50.0],
