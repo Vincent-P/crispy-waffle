@@ -33,4 +33,30 @@ impl Rect {
             size: element_size,
         }
     }
+
+    pub fn split_top_pixels(&self, height: f32) -> (Self, Self) {
+        (
+            Self {
+                pos: self.pos,
+                size: [self.size[0], height],
+            },
+            Self {
+                pos: [self.pos[0], self.pos[1] + height],
+                size: [self.size[0], self.size[1] - height],
+            },
+        )
+    }
+
+    pub fn split_left_pixels(&self, width: f32) -> (Self, Self) {
+        (
+            Self {
+                pos: self.pos,
+                size: [width, self.size[1]],
+            },
+            Self {
+                pos: [self.pos[0] + width, self.pos[1]],
+                size: [self.size[1] - width, self.size[1]],
+            },
+        )
+    }
 }

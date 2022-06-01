@@ -378,6 +378,12 @@ impl<'a> Drawer<'a> {
         layout
     }
 
+    pub fn shape_and_layout_text(&mut self, face: &Face, text: &str) -> (TextRun, TextLayout) {
+        let text_run = self.shape_text(face, text);
+        let text_layout = Self::layout_text(&text_run, None);
+        (text_run, text_layout)
+    }
+
     pub fn draw_label(&mut self, face: &Face, label: &str, rect: Rect, i_clip_rect: u32) {
         let text_run = self.shape_text(face, label);
         let text_layout = Self::layout_text(&text_run, None);
@@ -580,5 +586,17 @@ impl<'a> Drawer<'a> {
 
         *index_offset += rects.len() * CORNERS.len();
         Self::end_primitive::<ColoredRect>(vertex_byte_offset, rects.len());
+    }
+}
+
+impl TextRun {
+    pub fn metrics(&self) -> swash::Metrics {
+        self.metrics
+    }
+}
+
+impl TextLayout {
+    pub fn size(&self) -> [f32; 2] {
+        self.size
     }
 }

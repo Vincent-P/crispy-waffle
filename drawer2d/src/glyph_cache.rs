@@ -109,10 +109,12 @@ impl GlyphCache {
                 .get_mut(&alloc_data.face_hash)
                 .unwrap()
                 .glyphs;
+
             let i_glyph = face_glyph_entries
                 .iter()
                 .position(|entry| entry.alloc_id.is_some() && entry.alloc_id.unwrap() == lru_alloc)
                 .unwrap();
+
             face_glyph_entries.swap_remove(i_glyph);
 
             // Remove the allocation from the atlas

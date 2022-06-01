@@ -21,8 +21,6 @@ use render::{
 
 use drawer2d::{drawer::*, font::*, glyph_cache::GlyphEvent, rect::*};
 
-use ui::*;
-
 mod profile {
     #[cfg(feature = "optick")]
     pub fn init() {}
@@ -524,13 +522,37 @@ impl Renderer {
     }
 }
 
-struct App<'a> {
+struct App {
     pub renderer: Renderer,
     pub drawer: Drawer<'static>,
-    pub ui: UiState<'a>,
+    pub ui: ui::Ui,
 }
 
-impl App<'_> {
+impl App {
+    pub fn draw_menubar(&mut self, fullscreen: Rect) {
+        let ui_face = self.ui.theme.face();
+        let (label_run, label_layout) = self.drawer.shape_and_layout_text(&ui_face, "Open File");
+        let label_metrics = label_run.metrics();
+
+        let (menubar_rect, content_rect) =
+            fullscreen.split_top_pixels(label_metrics.ascent + label_metrics.descent + 20.0);
+
+        self.drawer
+            .draw_colored_rect(menubar_rect, 0, ColorU32::greyscale(0xE8));
+
+        let (label_rect, menubar_rest_rect) =
+            menubar_rect.split_left_pixels(label_layout.size()[0] + 2.0 * 10.0);
+        let label_rect = label_rect.inset(5.0);
+
+        self.ui.button(
+            &mut self.drawer,
+            ui::Button {
+                label: "Open File",
+                rect: label_rect,
+            },
+        );
+    }
+
     pub fn draw_ui(&mut self, viewport_size: [f32; 2]) {
         profile::scope!("ui draw");
         self.drawer.clear();
@@ -541,8 +563,10 @@ impl App<'_> {
             size: viewport_size,
         };
 
+        self.draw_menubar(fullscreen);
+
         self.drawer.draw_label(
-            self.ui.face(),
+            &self.ui.theme.face(),
             &format!("mouse {:?}", self.ui.mouse_position()),
             fullscreen,
             0,
@@ -552,7 +576,7 @@ impl App<'_> {
 
         if self.ui.button(
             &mut self.drawer,
-            UiButton {
+            ui::Button {
                 label: &format!("TtegtI     (  {}x{} )", button_width, 50.0),
                 rect: Rect {
                     pos: [250.0, 250.0],
@@ -600,7 +624,7 @@ fn main() -> Result<()> {
         [GLYPH_ATLAS_RESOLUTION, GLYPH_ATLAS_RESOLUTION],
         renderer.get_glyph_atlas_descriptor(),
     );
-    let ui = UiState::new(Rc::new(Face::from_font(&ui_font, 36.0)));
+    let ui = ui::Ui::new(Rc::new(ui_font), 24.0);
 
     let mut app = App {
         renderer,
