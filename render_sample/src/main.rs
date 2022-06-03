@@ -533,20 +533,19 @@ struct App {
 
 impl App {
     pub fn draw_menubar(&mut self, fullscreen: Rect) {
-        let ui_face = self.ui.theme.face();
-        let (label_run, label_layout) = self.drawer.shape_and_layout_text(&ui_face, "Open File");
-        let label_metrics = label_run.metrics();
+        let menubar_margins = [10.0, self.ui.mouse_position()[1]];
+        let menubar_container = self.ui.begin_container();
 
-        let (menubar_rect, content_rect) =
-            fullscreen.split_top_pixels(label_metrics.ascent + label_metrics.descent + 20.0);
+        let (menubar_rect, content_rect) = fullscreen
+            .split_top_pixels(menubar_container.rect().size[1] + 2.0 * menubar_margins[1]);
 
         self.drawer
             .draw_colored_rect(menubar_rect, 0, ColorU32::greyscale(0xE8));
 
-        let (label_rect, menubar_rest_rect) =
-            menubar_rect.split_left_pixels(label_layout.size()[0] + 2.0 * 10.0);
-        let label_rect = label_rect.inset(5.0);
+        let (label_rect, menubar_rest_rect) = menubar_rect.split_left_pixels(100.0);
+        let label_rect = label_rect.offset(menubar_margins);
 
+        let button_container = self.ui.begin_container();
         self.ui.button(
             &mut self.drawer,
             ui::Button {
@@ -555,6 +554,20 @@ impl App {
                 margins: [2.0, 5.0],
             },
         );
+        self.ui.end_container();
+
+        let label_rect =
+            label_rect.offset([0.0, button_container.rect().size[1] + menubar_margins[1]]);
+        self.ui.button(
+            &mut self.drawer,
+            ui::Button {
+                label: "TEst",
+                pos: label_rect.pos,
+                margins: [2.0, 5.0],
+            },
+        );
+
+        self.ui.end_container();
     }
 
     pub fn draw_ui(&mut self, viewport_size: [f32; 2]) {

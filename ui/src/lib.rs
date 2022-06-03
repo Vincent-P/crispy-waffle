@@ -20,16 +20,28 @@ pub struct Activation {
     gen: u64,
 }
 
+pub struct State {
+    container_stack: Vec<Container>,
+    i_container_stack: usize,
+}
+
 pub struct Ui {
     pub activation: Activation,
     pub theme: Theme,
     pub inputs: Inputs,
+    state: State,
 }
 
 pub struct Button<'a> {
     pub label: &'a str,
     pub pos: [f32; 2],
     pub margins: [f32; 2],
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Container {
+    min_pos: [f32; 2],
+    max_pos: [f32; 2],
 }
 
 impl Ui {
@@ -50,6 +62,10 @@ impl Ui {
             inputs: Inputs {
                 mouse_pos: [0.0, 0.0],
                 left_mouse_button_pressed: false,
+            },
+            state: State {
+                container_stack: vec![Container::default()],
+                i_container_stack: 0,
             },
         }
     }
@@ -128,7 +144,33 @@ impl Ui {
             0,
         );
 
+        self.state.add_rect_to_last_container(button_rect);
+
         result
+    }
+
+    pub fn begin_container(&mut self) -> Container {
+        assert!(self.state.i_container_stack <= self.state.container_stack.len());
+
+        self.state.i_container_stack += 1;
+
+        if self.state.i_container_stack == self.state.container_stack.len() {
+            self.state.container_stack.push(Container::default());
+        }
+
+        let container = &mut self.state.container_stack[self.state.i_container_stack];
+
+        let old_container = *container;
+        *container = Container::default();
+
+        old_container
+    }
+
+    pub fn end_container(&mut self) {
+        let ended_container_rect = self.state.container_stack[self.state.i_container_stack].rect();
+        self.state.i_container_stack -= 1;
+        assert!(self.state.i_container_stack < self.state.container_stack.len());
+        self.state.add_rect_to_last_container(ended_container_rect);
     }
 }
 
@@ -149,5 +191,47 @@ impl Inputs {
 impl Theme {
     pub fn face(&self) -> Face {
         Face::from_font(&self.font, self.font_size)
+    }
+}
+
+impl State {
+    pub fn add_rect_to_last_container(&mut self, rect: Rect) {
+        self.container_stack[self.i_container_stack].add_rect(rect);
+    }
+}
+
+impl Container {
+    pub fn add_rect(&mut self, rect: Rect) {
+        let rect_min_pos = rect.pos;
+        let rect_max_pos = [rect.pos[0] + rect.size[0], rect.pos[1] + rect.size[1]];
+
+        self.min_pos = [
+            self.min_pos[0].min(rect_min_pos[0]),
+            self.min_pos[1].min(rect_min_pos[1]),
+        ];
+
+        self.max_pos = [
+            self.max_pos[0].max(rect_max_pos[0]),
+            self.max_pos[1].max(rect_max_pos[1]),
+        ];
+    }
+
+    pub fn rect(&self) -> Rect {
+        Rect {
+            pos: self.min_pos,
+            size: [
+                self.max_pos[0] - self.min_pos[0],
+                self.max_pos[1] - self.min_pos[1],
+            ],
+        }
+    }
+}
+
+impl Default for Container {
+    fn default() -> Self {
+        Self {
+            min_pos: [f32::INFINITY, f32::INFINITY],
+            max_pos: [f32::NEG_INFINITY, f32::NEG_INFINITY],
+        }
     }
 }

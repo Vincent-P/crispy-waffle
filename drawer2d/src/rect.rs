@@ -34,6 +34,13 @@ impl Rect {
         }
     }
 
+    pub fn offset(&self, d: [f32; 2]) -> Self {
+        Self {
+            pos: [self.pos[0] + d[0], self.pos[1] + d[1]],
+            size: self.size,
+        }
+    }
+
     pub fn split_top_pixels(&self, height: f32) -> (Self, Self) {
         (
             Self {
