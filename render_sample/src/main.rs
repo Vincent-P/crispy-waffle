@@ -1,3 +1,6 @@
+#![cfg_attr(debug_assertions, windows_subsystem = "console")]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use anyhow::Result;
 use exo::{dynamic_array::DynamicArray, pool::Handle};
 use raw_window_handle::HasRawWindowHandle;
@@ -97,7 +100,7 @@ impl Renderer {
         shader_dir: PathBuf,
     ) -> vulkan::VulkanResult<Self> {
         let instance = vulkan::Instance::new(vulkan::InstanceSpec {
-            enable_validation: false,
+            enable_validation: cfg!(debug_assertions),
             ..Default::default()
         })?;
         let mut physical_devices = instance.get_physical_devices()?;
@@ -548,7 +551,8 @@ impl App {
             &mut self.drawer,
             ui::Button {
                 label: "Open File",
-                rect: label_rect,
+                pos: label_rect.pos,
+                margins: [2.0, 5.0],
             },
         );
     }
@@ -578,10 +582,8 @@ impl App {
             &mut self.drawer,
             ui::Button {
                 label: &format!("TtegtI     (  {}x{} )", button_width, 50.0),
-                rect: Rect {
-                    pos: [250.0, 250.0],
-                    size: [button_width, 50.0],
-                },
+                pos: [250.0, 250.0],
+                margins: [button_width * 0.5, 2.5],
             },
         ) {
             println!("button pressed!");

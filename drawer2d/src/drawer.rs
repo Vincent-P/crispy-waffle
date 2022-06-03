@@ -421,14 +421,14 @@ impl<'a> Drawer<'a> {
             ],
         );
 
-        self.draw_text_run(&text_run, &text_layout, centered_text, i_clip_rect);
+        self.draw_text_run(&text_run, &text_layout, centered_text.pos, i_clip_rect);
     }
 
     pub fn draw_text_run(
         &mut self,
         text_run: &TextRun,
         text_layout: &TextLayout,
-        rect: Rect,
+        pos: [f32; 2],
         i_clip_rect: u32,
     ) {
         let mut rects = Vec::new();
@@ -441,10 +441,7 @@ impl<'a> Drawer<'a> {
                     let glyph_position = text_layout.glyph_positions[i_glyph];
 
                     let rect = Rect {
-                        pos: [
-                            rect.pos[0] + glyph_position[0],
-                            rect.pos[1] + glyph_position[1],
-                        ],
+                        pos: [pos[0] + glyph_position[0], pos[1] + glyph_position[1]],
                         size: [glyph.placement.width as f32, glyph.placement.height as f32],
                     };
 

@@ -28,7 +28,8 @@ pub struct Ui {
 
 pub struct Button<'a> {
     pub label: &'a str,
-    pub rect: Rect,
+    pub pos: [f32; 2],
+    pub margins: [f32; 2],
 }
 
 impl Ui {
@@ -86,7 +87,19 @@ impl Ui {
         let mut result = false;
         let id = self.activation.make_id();
 
-        if self.inputs.is_hovering(button.rect) {
+        let (label_run, label_layout) =
+            drawer.shape_and_layout_text(&self.theme.face(), button.label);
+        let label_size = label_layout.size();
+
+        let button_rect = Rect {
+            pos: button.pos,
+            size: [
+                label_size[0] + 2.0 * button.margins[0],
+                label_size[1] + 2.0 * button.margins[1],
+            ],
+        };
+
+        if self.inputs.is_hovering(button_rect) {
             self.activation.focused = Some(id);
             if self.activation.active == None && self.inputs.left_mouse_button_pressed {
                 self.activation.active = Some(id);
@@ -103,9 +116,17 @@ impl Ui {
             _ => self.theme.button_bg_color,
         };
 
-        drawer.draw_colored_rect(button.rect, 0, color);
+        drawer.draw_colored_rect(button_rect, 0, color);
 
-        drawer.draw_label(&self.theme.face(), button.label, button.rect, 0);
+        drawer.draw_text_run(
+            &label_run,
+            &label_layout,
+            [
+                button_rect.pos[0] + button.margins[0],
+                button_rect.pos[1] + button.margins[1],
+            ],
+            0,
+        );
 
         result
     }
