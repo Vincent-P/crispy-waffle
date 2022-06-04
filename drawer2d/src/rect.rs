@@ -41,6 +41,13 @@ impl Rect {
         }
     }
 
+    pub fn margins(&self, m: [f32; 2]) -> Self {
+        Self {
+            pos: [self.pos[0] + m[0], self.pos[1] + m[1]],
+            size: [self.size[0] - 2.0 * m[0], self.size[1] - 2.0 * m[1]],
+        }
+    }
+
     pub fn split_top_pixels(&self, height: f32) -> (Self, Self) {
         (
             Self {
@@ -50,6 +57,19 @@ impl Rect {
             Self {
                 pos: [self.pos[0], self.pos[1] + height],
                 size: [self.size[0], self.size[1] - height],
+            },
+        )
+    }
+
+    pub fn split_bottom_pixels(&self, height: f32) -> (Self, Self) {
+        (
+            Self {
+                pos: self.pos,
+                size: [self.size[0], self.size[1] - height],
+            },
+            Self {
+                pos: [self.pos[0], self.pos[1] + self.size[1] - height],
+                size: [self.size[0], height],
             },
         )
     }

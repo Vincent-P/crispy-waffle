@@ -213,15 +213,12 @@ impl GlyphCache {
     {
         for event in self.events.iter() {
             let glyph_entry = if let GlyphEvent::New(face_hash, glyph_id) = event {
-                Some(
-                    self.face_caches
-                        .get(face_hash)
-                        .unwrap()
-                        .glyphs
-                        .iter()
-                        .find(|glyph_entry| glyph_entry.id == *glyph_id)
-                        .unwrap(),
-                )
+                self.face_caches
+                    .get(face_hash)
+                    .unwrap()
+                    .glyphs
+                    .iter()
+                    .find(|glyph_entry| glyph_entry.id == *glyph_id)
             } else {
                 None
             };

@@ -74,7 +74,7 @@ mod profile {
 const FRAME_QUEUE_LENGTH: usize = 2;
 static mut DRAWER_VERTEX_MEMORY: [u8; 64 << 10] = [0; 64 << 10];
 static mut DRAWER_INDEX_MEMORY: [u32; 8 << 10] = [0; 8 << 10];
-const GLYPH_ATLAS_RESOLUTION: i32 = 256;
+const GLYPH_ATLAS_RESOLUTION: i32 = 4096;
 
 struct Renderer {
     instance: vulkan::Instance,
@@ -532,8 +532,9 @@ struct App {
 }
 
 impl App {
-    pub fn draw_menubar(&mut self, fullscreen: Rect) {
-        let menubar_margins = [10.0, self.ui.mouse_position()[1]];
+    pub fn draw_menubar(&mut self, fullscreen: Rect) -> (Rect, Rect) {
+        let em = self.ui.em();
+        let menubar_margins = [1.0 * em, 0.25 * em];
         let menubar_container = self.ui.begin_container();
 
         let (menubar_rect, content_rect) = fullscreen
@@ -543,7 +544,7 @@ impl App {
             .draw_colored_rect(menubar_rect, 0, ColorU32::greyscale(0xE8));
 
         let (label_rect, menubar_rest_rect) = menubar_rect.split_left_pixels(100.0);
-        let label_rect = label_rect.offset(menubar_margins);
+        let label_rect = label_rect.margins(menubar_margins);
 
         let button_container = self.ui.begin_container();
         self.ui.button(
@@ -551,23 +552,27 @@ impl App {
             ui::Button {
                 label: "Open File",
                 pos: label_rect.pos,
-                margins: [2.0, 5.0],
+                margins: [0.5 * em, 0.5 * em],
             },
         );
         self.ui.end_container();
 
-        let label_rect =
-            label_rect.offset([0.0, button_container.rect().size[1] + menubar_margins[1]]);
+        let label_rect = label_rect.offset([
+            button_container.rect().size[0] + menubar_margins[0],
+            button_container.rect().size[1] + menubar_margins[1],
+        ]);
         self.ui.button(
             &mut self.drawer,
             ui::Button {
                 label: "TEst",
                 pos: label_rect.pos,
-                margins: [2.0, 5.0],
+                margins: [0.5 * em, 0.5 * em],
             },
         );
 
         self.ui.end_container();
+
+        (menubar_rect, content_rect)
     }
 
     pub fn draw_ui(&mut self, viewport_size: [f32; 2]) {
@@ -575,32 +580,80 @@ impl App {
         self.drawer.clear();
         self.ui.new_frame();
 
+        let em = self.ui.em();
+
         let fullscreen = Rect {
             pos: [0.0, 0.0],
             size: viewport_size,
         };
 
-        self.draw_menubar(fullscreen);
+        let (_, content_rect) = self.draw_menubar(fullscreen);
+        let (content_rect, footer_rect) = content_rect.split_bottom_pixels(3.0 * em);
+
+        // -- Content
+        self.drawer
+            .draw_colored_rect(content_rect, 0, ColorU32::from_f32(0.53, 0.13, 0.13, 1.0));
+        self.drawer.draw_colored_rect(
+            content_rect.inset(1.0 * em),
+            0,
+            ColorU32::from_f32(0.63, 0.23, 0.23, 1.0),
+        );
 
         self.drawer.draw_label(
             &self.ui.theme.face(),
-            &format!("mouse {:?}", self.ui.mouse_position()),
-            fullscreen,
+            &format!("CONTENT: mouse position {:?}", self.ui.mouse_position()),
+            content_rect,
             0,
         );
 
-        let button_width = (viewport_size[0] * 0.33).max(400.0);
+        let mut cursor = content_rect.pos;
+        cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
+
+        self.drawer.draw_label(
+            &self.ui.theme.face(),
+            &format!("Font size {:.2}", self.ui.theme.font_size),
+            Rect {
+                pos: cursor,
+                size: [14.0 * em, 2.0 * em],
+            },
+            0,
+        );
+        cursor[1] += 3.0 * em;
 
         if self.ui.button(
             &mut self.drawer,
             ui::Button {
-                label: &format!("TtegtI     (  {}x{} )", button_width, 50.0),
-                pos: [250.0, 250.0],
-                margins: [button_width * 0.5, 2.5],
+                label: "Increase font size by 2",
+                pos: cursor,
+                margins: [0.5 * em, 0.5 * em],
             },
         ) {
-            println!("button pressed!");
+            self.ui.theme.font_size += 2.0;
         }
+        cursor[1] += 3.0 * em;
+
+        if self.ui.button(
+            &mut self.drawer,
+            ui::Button {
+                label: "Decrease font size by 2",
+                pos: cursor,
+                margins: [0.5 * em, 0.5 * em],
+            },
+        ) {
+            self.ui.theme.font_size -= 2.0;
+        }
+        cursor[1] += 3.0 * em;
+
+        // -- Footer
+        self.drawer
+            .draw_colored_rect(footer_rect, 0, ColorU32::from_f32(0.53, 0.13, 0.13, 1.0));
+        self.drawer.draw_colored_rect(
+            footer_rect.inset(0.5 * em),
+            0,
+            ColorU32::from_f32(0.63, 0.23, 0.23, 1.0),
+        );
+        self.drawer
+            .draw_label(&self.ui.theme.face(), "FOOTER", footer_rect, 0);
 
         self.ui.end_frame();
     }

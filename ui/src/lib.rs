@@ -1,12 +1,15 @@
 use drawer2d::{drawer::*, font::*, rect::*};
 use std::rc::Rc;
 
+mod widgets;
+pub use widgets::*;
+
 pub struct Theme {
     button_bg_color: ColorU32,
     button_pressed_bg_color: ColorU32,
     button_hover_bg_color: ColorU32,
     font: Rc<Font>,
-    font_size: f32,
+    pub font_size: f32,
 }
 
 pub struct Inputs {
@@ -32,12 +35,6 @@ pub struct Ui {
     state: State,
 }
 
-pub struct Button<'a> {
-    pub label: &'a str,
-    pub pos: [f32; 2],
-    pub margins: [f32; 2],
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct Container {
     min_pos: [f32; 2],
@@ -45,6 +42,7 @@ pub struct Container {
 }
 
 impl Ui {
+    // -- Main UI API
     pub fn new(font: Rc<Font>, font_size: f32) -> Self {
         Self {
             activation: Activation {
@@ -70,6 +68,18 @@ impl Ui {
         }
     }
 
+    pub fn new_frame(&mut self) {
+        self.activation.gen = 0;
+        self.activation.focused = None;
+    }
+
+    pub fn end_frame(&mut self) {
+        if !self.inputs.left_mouse_button_pressed {
+            self.activation.active = None;
+        }
+    }
+
+    // -- Helpers
     pub fn mouse_position(&self) -> [f32; 2] {
         self.inputs.mouse_pos
     }
@@ -82,71 +92,16 @@ impl Ui {
         self.inputs.left_mouse_button_pressed = pressed;
     }
 
-    pub fn new_frame(&mut self) {
-        self.activation.gen = 0;
-        self.activation.focused = None;
+    // Returns the size of an em in pixels
+    pub fn em(&self) -> f32 {
+        self.theme.font_size
     }
 
-    pub fn end_frame(&mut self) {
-        if !self.inputs.left_mouse_button_pressed {
-            self.activation.active = None;
-        }
-    }
-
+    // -- Widgets API
     fn has_clicked(&self, id: u64) -> bool {
         !self.inputs.left_mouse_button_pressed
             && self.activation.focused == Some(id)
             && self.activation.active == Some(id)
-    }
-
-    pub fn button(&mut self, drawer: &mut Drawer, button: Button) -> bool {
-        let mut result = false;
-        let id = self.activation.make_id();
-
-        let (label_run, label_layout) =
-            drawer.shape_and_layout_text(&self.theme.face(), button.label);
-        let label_size = label_layout.size();
-
-        let button_rect = Rect {
-            pos: button.pos,
-            size: [
-                label_size[0] + 2.0 * button.margins[0],
-                label_size[1] + 2.0 * button.margins[1],
-            ],
-        };
-
-        if self.inputs.is_hovering(button_rect) {
-            self.activation.focused = Some(id);
-            if self.activation.active == None && self.inputs.left_mouse_button_pressed {
-                self.activation.active = Some(id);
-            }
-        }
-
-        if self.has_clicked(id) {
-            result = true;
-        }
-
-        let color = match (self.activation.focused, self.activation.active) {
-            (Some(f), Some(a)) if f == id && a == id => self.theme.button_pressed_bg_color,
-            (Some(f), _) if f == id => self.theme.button_hover_bg_color,
-            _ => self.theme.button_bg_color,
-        };
-
-        drawer.draw_colored_rect(button_rect, 0, color);
-
-        drawer.draw_text_run(
-            &label_run,
-            &label_layout,
-            [
-                button_rect.pos[0] + button.margins[0],
-                button_rect.pos[1] + button.margins[1],
-            ],
-            0,
-        );
-
-        self.state.add_rect_to_last_container(button_rect);
-
-        result
     }
 
     pub fn begin_container(&mut self) -> Container {
@@ -175,6 +130,7 @@ impl Ui {
 }
 
 impl Activation {
+    // -- Widgets API
     pub fn make_id(&mut self) -> u64 {
         let new_id = self.gen;
         self.gen += 1;
@@ -183,6 +139,7 @@ impl Activation {
 }
 
 impl Inputs {
+    // -- Widgets API
     pub fn is_hovering(&self, rect: Rect) -> bool {
         rect.contains_point(self.mouse_pos)
     }
@@ -195,12 +152,14 @@ impl Theme {
 }
 
 impl State {
+    // Add a rect to the latest container
     pub fn add_rect_to_last_container(&mut self, rect: Rect) {
         self.container_stack[self.i_container_stack].add_rect(rect);
     }
 }
 
 impl Container {
+    // Add a new rectangle inside a container
     pub fn add_rect(&mut self, rect: Rect) {
         let rect_min_pos = rect.pos;
         let rect_max_pos = [rect.pos[0] + rect.size[0], rect.pos[1] + rect.size[1]];
@@ -216,6 +175,7 @@ impl Container {
         ];
     }
 
+    // Returns the size of the container as a Rect
     pub fn rect(&self) -> Rect {
         Rect {
             pos: self.min_pos,
