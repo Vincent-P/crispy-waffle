@@ -48,6 +48,13 @@ impl Rect {
         }
     }
 
+    pub fn set_height(self, h: f32) -> Self {
+        Self {
+            pos: self.pos,
+            size: [self.size[0], h],
+        }
+    }
+
     pub fn split_top_pixels(&self, height: f32) -> (Self, Self) {
         (
             Self {

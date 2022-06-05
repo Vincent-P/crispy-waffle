@@ -4,6 +4,7 @@
 use anyhow::Result;
 use exo::{dynamic_array::DynamicArray, pool::Handle};
 use raw_window_handle::HasRawWindowHandle;
+use std::time::{Duration, Instant};
 use std::{ffi::CStr, mem::size_of, os::raw::c_char, path::PathBuf, rc::Rc};
 use winit::{
     event::{ElementState, Event, MouseButton, WindowEvent},
@@ -69,6 +70,103 @@ mod profile {
     }
 
     pub(crate) use scope;
+}
+
+mod custom_ui {
+    const FPS_HISTOGRAM_LENGTH: usize = 512;
+    pub struct FpsHistogram {
+        frame_times: [f32; FPS_HISTOGRAM_LENGTH],
+    }
+
+    impl FpsHistogram {
+        pub fn new() -> Self {
+            Self {
+                frame_times: [0.0; FPS_HISTOGRAM_LENGTH],
+            }
+        }
+
+        pub fn push_time(&mut self, dt: f32) {
+            self.frame_times.rotate_right(1);
+            self.frame_times[0] = dt;
+        }
+    }
+
+    impl Default for FpsHistogram {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    pub mod widgets {
+        use drawer2d::{drawer::*, rect::*};
+
+        pub struct FpsHistogram<'a> {
+            pub histogram: &'a super::FpsHistogram,
+            pub rect: Rect,
+        }
+
+        fn TurboColormap(x: f32) -> [f32; 3] {
+            const kRedVec4: [f32; 4] = [0.13572138, 4.61539260, -42.66032258, 132.13108234];
+            const kGreenVec4: [f32; 4] = [0.09140261, 2.19418839, 4.84296658, -14.18503333];
+            const kBlueVec4: [f32; 4] = [0.10667330, 12.64194608, -60.58204836, 110.36276771];
+            const kRedVec2: [f32; 2] = [-152.94239396, 59.28637943];
+            const kGreenVec2: [f32; 2] = [4.27729857, 2.82956604];
+            const kBlueVec2: [f32; 2] = [-89.90310912, 27.34824973];
+            let dot4 =
+                |a: [f32; 4], b: [f32; 4]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+            let dot2 = |a: [f32; 2], b: [f32; 2]| a[0] * b[0] + a[1] * b[1];
+
+            let x = x.clamp(0.0, 1.0);
+            let v4 = [1.0, x, x * x, x * x * x];
+            let v2 = [v4[2] * v4[2], v4[3] * v4[2]];
+
+            [
+                dot4(v4, kRedVec4) + dot2(v2, kRedVec2),
+                dot4(v4, kGreenVec4) + dot2(v2, kGreenVec2),
+                dot4(v4, kBlueVec4) + dot2(v2, kBlueVec2),
+            ]
+        }
+
+        // https://www.asawicki.info/news_1758_an_idea_for_visualization_of_frame_times
+        pub fn histogram(ui: &mut ui::Ui, drawer: &mut Drawer, widget: FpsHistogram) {
+            let mut cursor = [
+                widget.rect.pos[0] + widget.rect.size[0],
+                widget.rect.pos[1] + widget.rect.size[1],
+            ];
+
+            drawer.draw_colored_rect(widget.rect, 0, ColorU32::from_f32(0.0, 0.0, 0.0, 0.5));
+            ui.state.add_rect_to_last_container(widget.rect);
+
+            for dt in widget.histogram.frame_times {
+                if cursor[0] < widget.rect.pos[0] {
+                    break;
+                }
+
+                let target_fps: f32 = 144.0;
+                let max_frame_time: f32 = 1.0 / 15.0; // in seconds
+
+                let rect_width = dt / (1.0 / target_fps);
+                let height_factor = (dt.log2() - (1.0 / target_fps).log2())
+                    / ((max_frame_time).log2() - (1.0 / target_fps).log2());
+                let rect_height = height_factor.clamp(0.1, 1.0) * widget.rect.size[1];
+                let rect_color = TurboColormap(dt / (1.0 / 120.0));
+                let rect_color =
+                    ColorU32::from_f32(rect_color[0], rect_color[1], rect_color[2], 1.0);
+
+                let rect_width = rect_width.max(1.0);
+                let rect_height = rect_height.max(1.0);
+
+                cursor[0] = cursor[0] - rect_width;
+
+                let rect = Rect {
+                    pos: [cursor[0].ceil(), (cursor[1] - rect_height).ceil()],
+                    size: [rect_width, rect_height],
+                };
+                drawer.draw_colored_rect_no_anchors(rect, 0, rect_color);
+                ui.state.add_rect_to_last_container(rect);
+            }
+        }
+    }
 }
 
 const FRAME_QUEUE_LENGTH: usize = 2;
@@ -529,30 +627,35 @@ struct App {
     pub renderer: Renderer,
     pub drawer: Drawer<'static>,
     pub ui: ui::Ui,
+    fps_histogram: custom_ui::FpsHistogram,
+    docking: ui_docking::Docking,
 }
 
 impl App {
+    pub fn update(&mut self, dt: f32) {
+        self.fps_histogram.push_time(dt);
+    }
+
     pub fn draw_menubar(&mut self, fullscreen: Rect) -> (Rect, Rect) {
         let em = self.ui.em();
         let menubar_margins = [1.0 * em, 0.25 * em];
         let menubar_container = self.ui.begin_container();
 
-        let (menubar_rect, content_rect) = fullscreen
-            .split_top_pixels(menubar_container.rect().size[1] + 2.0 * menubar_margins[1]);
+        let (menubar_rect, content_rect) =
+            fullscreen.split_top_pixels(menubar_container.rect().size[1]);
 
         self.drawer
             .draw_colored_rect(menubar_rect, 0, ColorU32::greyscale(0xE8));
 
-        let (label_rect, menubar_rest_rect) = menubar_rect.split_left_pixels(100.0);
-        let label_rect = label_rect.margins(menubar_margins);
+        let (label_rect, menubar_rest_rect) = menubar_rect.split_left_pixels(8.0 * em);
+        let label_rect = label_rect.set_height(2.5 * em).margins(menubar_margins);
 
         let button_container = self.ui.begin_container();
         self.ui.button(
             &mut self.drawer,
             ui::Button {
                 label: "Open File",
-                pos: label_rect.pos,
-                margins: [0.5 * em, 0.5 * em],
+                rect: label_rect,
             },
         );
         self.ui.end_container();
@@ -565,8 +668,7 @@ impl App {
             &mut self.drawer,
             ui::Button {
                 label: "TEst",
-                pos: label_rect.pos,
-                margins: [0.5 * em, 0.5 * em],
+                rect: label_rect,
             },
         );
 
@@ -591,69 +693,129 @@ impl App {
         let (content_rect, footer_rect) = content_rect.split_bottom_pixels(3.0 * em);
 
         // -- Content
-        self.drawer
-            .draw_colored_rect(content_rect, 0, ColorU32::from_f32(0.53, 0.13, 0.13, 1.0));
-        self.drawer.draw_colored_rect(
-            content_rect.inset(1.0 * em),
-            0,
-            ColorU32::from_f32(0.63, 0.23, 0.23, 1.0),
-        );
 
-        self.drawer.draw_label(
-            &self.ui.theme.face(),
-            &format!("CONTENT: mouse position {:?}", self.ui.mouse_position()),
+        let draw_area = |ui: &mut ui::Ui,
+                         drawer: &mut Drawer,
+                         rect: Rect,
+                         color: ColorU32,
+                         label: Option<&str>| {
+            drawer.draw_colored_rect(rect, 0, color);
+            drawer.draw_colored_rect(
+                rect.inset(1.0 * em),
+                0,
+                ColorU32::from_f32(0.25, 0.25, 0.25, 0.25),
+            );
+
+            if let Some(label_str) = label {
+                drawer.draw_label(&ui.theme.face(), label_str, rect, 0);
+            }
+        };
+
+        draw_area(
+            &mut self.ui,
+            &mut self.drawer,
             content_rect,
-            0,
+            ColorU32::from_f32(0.53, 0.13, 0.13, 1.0),
+            Some(&format!("CONTENT: frame {}", self.renderer.i_frame)),
         );
 
-        let mut cursor = content_rect.pos;
-        cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
+        self.docking.begin_docking(&self.ui, content_rect);
 
-        self.drawer.draw_label(
-            &self.ui.theme.face(),
-            &format!("Font size {:.2}", self.ui.theme.font_size),
-            Rect {
-                pos: cursor,
-                size: [14.0 * em, 2.0 * em],
-            },
-            0,
-        );
-        cursor[1] += 3.0 * em;
-
-        if self.ui.button(
-            &mut self.drawer,
-            ui::Button {
-                label: "Increase font size by 2",
-                pos: cursor,
-                margins: [0.5 * em, 0.5 * em],
-            },
-        ) {
-            self.ui.theme.font_size += 2.0;
+        if let Some(content1_rect) = self.docking.tab_view("Content 1") {
+            draw_area(
+                &mut self.ui,
+                &mut self.drawer,
+                content1_rect,
+                ColorU32::from_f32(0.13, 0.53, 0.13, 1.0),
+                Some("Content number uno"),
+            );
         }
-        cursor[1] += 3.0 * em;
 
-        if self.ui.button(
-            &mut self.drawer,
-            ui::Button {
-                label: "Decrease font size by 2",
-                pos: cursor,
-                margins: [0.5 * em, 0.5 * em],
-            },
-        ) {
-            self.ui.theme.font_size -= 2.0;
+        if let Some(content2_rect) = self.docking.tab_view("Content 2") {
+            draw_area(
+                &mut self.ui,
+                &mut self.drawer,
+                content2_rect,
+                ColorU32::from_f32(0.13, 0.13, 0.53, 1.0),
+                Some("Content number dos"),
+            );
         }
-        cursor[1] += 3.0 * em;
+
+        self.docking.end_docking(&mut self.ui, &mut self.drawer);
+
+        if false {
+            let mut cursor = content_rect.pos;
+            cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
+
+            self.drawer.draw_label(
+                &self.ui.theme.face(),
+                &format!("Font size {:.2}", self.ui.theme.font_size),
+                Rect {
+                    pos: cursor,
+                    size: [14.0 * em, 2.0 * em],
+                },
+                0,
+            );
+            cursor[1] += 3.0 * em;
+
+            if self.ui.button(
+                &mut self.drawer,
+                ui::Button {
+                    label: "Increase font size by 2",
+                    rect: Rect {
+                        pos: cursor,
+                        size: [20.0 * em, 0.5 * em],
+                    },
+                },
+            ) {
+                self.ui.theme.font_size += 2.0;
+            }
+            cursor[1] += 3.0 * em;
+
+            if self.ui.button(
+                &mut self.drawer,
+                ui::Button {
+                    label: "Decrease font size by 2",
+                    rect: Rect {
+                        pos: cursor,
+                        size: [20.0 * em, 0.5 * em],
+                    },
+                },
+            ) {
+                self.ui.theme.font_size -= 2.0;
+            }
+            cursor[1] += 3.0 * em;
+        }
 
         // -- Footer
-        self.drawer
-            .draw_colored_rect(footer_rect, 0, ColorU32::from_f32(0.53, 0.13, 0.13, 1.0));
-        self.drawer.draw_colored_rect(
-            footer_rect.inset(0.5 * em),
-            0,
-            ColorU32::from_f32(0.63, 0.23, 0.23, 1.0),
+        let footer_label = format!(
+            "Focused: {:?} | Active: {:?}",
+            self.ui.activation.focused, self.ui.activation.active
         );
-        self.drawer
-            .draw_label(&self.ui.theme.face(), "FOOTER", footer_rect, 0);
+        draw_area(
+            &mut self.ui,
+            &mut self.drawer,
+            footer_rect,
+            ColorU32::from_f32(0.53, 0.13, 0.13, 1.0),
+            Some(&footer_label),
+        );
+
+        // -- Fps histogram
+        let histogram_rect = Rect {
+            pos: [
+                fullscreen.pos[0] + fullscreen.size[0] - 250.0 - 1.0 * em,
+                1.0 * em,
+            ],
+            size: [250.0, 150.0],
+        };
+        custom_ui::widgets::histogram(
+            &mut self.ui,
+            &mut self.drawer,
+            custom_ui::widgets::FpsHistogram {
+                histogram: &self.fps_histogram,
+                rect: histogram_rect,
+            },
+        );
 
         self.ui.end_frame();
     }
@@ -698,7 +860,12 @@ fn main() -> Result<()> {
         renderer,
         drawer,
         ui,
+        fps_histogram: custom_ui::FpsHistogram::new(),
+        docking: ui_docking::Docking::new(),
     };
+
+    let now = Instant::now();
+    let mut last_time = now.elapsed();
 
     event_loop.run_return(|event, _, control_flow| {
         profile::scope!("window event");
@@ -741,6 +908,10 @@ fn main() -> Result<()> {
 
             Event::MainEventsCleared => {
                 let window_size: winit::dpi::LogicalSize<f32> = window.inner_size().to_logical(1.0);
+
+                let dt = now.elapsed() - last_time;
+                last_time = now.elapsed();
+                app.update(dt.as_secs_f32());
 
                 app.draw_ui([window_size.width, window_size.height]);
 

@@ -4,5 +4,6 @@ members = [
     "render",
     "drawer2d",
     "ui",
+    "ui_docking",
     "render_sample",
 ]

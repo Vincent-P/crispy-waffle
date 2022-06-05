@@ -4,27 +4,29 @@ use std::rc::Rc;
 mod widgets;
 pub use widgets::*;
 
+const MAX_CONTAINER_DEPTH: usize = 64;
+
 pub struct Theme {
-    button_bg_color: ColorU32,
-    button_pressed_bg_color: ColorU32,
-    button_hover_bg_color: ColorU32,
-    font: Rc<Font>,
+    pub button_bg_color: ColorU32,
+    pub button_pressed_bg_color: ColorU32,
+    pub button_hover_bg_color: ColorU32,
+    pub font: Rc<Font>,
     pub font_size: f32,
 }
 
 pub struct Inputs {
-    mouse_pos: [f32; 2],
-    left_mouse_button_pressed: bool,
+    pub mouse_pos: [f32; 2],
+    pub left_mouse_button_pressed: bool,
 }
 
 pub struct Activation {
-    focused: Option<u64>,
-    active: Option<u64>,
-    gen: u64,
+    pub focused: Option<u64>,
+    pub active: Option<u64>,
+    pub gen: u64,
 }
 
 pub struct State {
-    container_stack: Vec<Container>,
+    container_stack: [Container; MAX_CONTAINER_DEPTH],
     i_container_stack: usize,
 }
 
@@ -32,7 +34,7 @@ pub struct Ui {
     pub activation: Activation,
     pub theme: Theme,
     pub inputs: Inputs,
-    state: State,
+    pub state: State,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -62,7 +64,7 @@ impl Ui {
                 left_mouse_button_pressed: false,
             },
             state: State {
-                container_stack: vec![Container::default()],
+                container_stack: [Container::default(); MAX_CONTAINER_DEPTH],
                 i_container_stack: 0,
             },
         }
@@ -98,7 +100,7 @@ impl Ui {
     }
 
     // -- Widgets API
-    fn has_clicked(&self, id: u64) -> bool {
+    pub fn has_clicked(&self, id: u64) -> bool {
         !self.inputs.left_mouse_button_pressed
             && self.activation.focused == Some(id)
             && self.activation.active == Some(id)
@@ -108,10 +110,6 @@ impl Ui {
         assert!(self.state.i_container_stack <= self.state.container_stack.len());
 
         self.state.i_container_stack += 1;
-
-        if self.state.i_container_stack == self.state.container_stack.len() {
-            self.state.container_stack.push(Container::default());
-        }
 
         let container = &mut self.state.container_stack[self.state.i_container_stack];
 
@@ -180,8 +178,8 @@ impl Container {
         Rect {
             pos: self.min_pos,
             size: [
-                self.max_pos[0] - self.min_pos[0],
-                self.max_pos[1] - self.min_pos[1],
+                (self.max_pos[0] - self.min_pos[0]).max(0.0),
+                (self.max_pos[1] - self.min_pos[1]).max(0.0),
             ],
         }
     }

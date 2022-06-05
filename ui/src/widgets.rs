@@ -2,8 +2,7 @@ use super::*;
 
 pub struct Button<'a> {
     pub label: &'a str,
-    pub pos: [f32; 2],
-    pub margins: [f32; 2],
+    pub rect: Rect,
 }
 
 impl Ui {
@@ -15,13 +14,7 @@ impl Ui {
             drawer.shape_and_layout_text(&self.theme.face(), button.label);
         let label_size = label_layout.size();
 
-        let button_rect = Rect {
-            pos: button.pos,
-            size: [
-                label_size[0] + 2.0 * button.margins[0],
-                label_size[1] + 2.0 * button.margins[1],
-            ],
-        };
+        let button_rect = button.rect;
 
         if self.inputs.is_hovering(button_rect) {
             self.activation.focused = Some(id);
@@ -45,10 +38,7 @@ impl Ui {
         drawer.draw_text_run(
             &label_run,
             &label_layout,
-            [
-                button_rect.pos[0] + button.margins[0],
-                button_rect.pos[1] + button.margins[1],
-            ],
+            Rect::center(button_rect, label_size).pos,
             0,
         );
 

@@ -10,6 +10,7 @@ exo = {path= "../exo"}
 render = {path= "../render"}
 drawer2d = {path= "../drawer2d"}
 ui = {path= "../ui"}
+ui_docking = {path= "../ui_docking"}
 winit = "0.26.1"
 anyhow = "1.0"
 raw-window-handle = "0.4.2"

@@ -53,17 +53,30 @@ impl ColorU32 {
         Self::from_u8(intensity, intensity, intensity, 255)
     }
 
-    pub fn get_a(self) -> u32 {
-        self.0 & 0xFF000000
-    }
-    pub fn get_r(self) -> u32 {
+    pub fn r(self) -> u32 {
         self.0 & 0x000000FF
     }
-    pub fn get_g(self) -> u32 {
+    pub fn g(self) -> u32 {
         self.0 & 0x0000FF00
     }
-    pub fn get_b(self) -> u32 {
+    pub fn b(self) -> u32 {
         self.0 & 0x00FF0000
+    }
+    pub fn a(self) -> u32 {
+        self.0 & 0xFF000000
+    }
+
+    pub fn r_f32(self) -> f32 {
+        (self.r() as f32) / 255.0
+    }
+    pub fn g_f32(self) -> f32 {
+        (self.g() as f32) / 255.0
+    }
+    pub fn b_f32(self) -> f32 {
+        (self.b() as f32) / 255.0
+    }
+    pub fn a_f32(self) -> f32 {
+        (self.a() as f32) / 255.0
     }
 }
 
@@ -235,6 +248,16 @@ impl<'a> Drawer<'a> {
 
     pub fn get_glyph_cache_mut(&mut self) -> &mut GlyphCache {
         &mut self.glyph_cache
+    }
+
+    pub fn draw_colored_rect_no_anchors(&mut self, rect: Rect, i_clip_rect: u32, color: ColorU32) {
+        Self::draw_colored_rects_impl(
+            &mut self.vertex_byte_offset,
+            self.vertex_buffer,
+            &mut self.index_offset,
+            self.index_buffer,
+            &[(rect, i_clip_rect, color)],
+        )
     }
 
     pub fn draw_colored_rect(&mut self, rect: Rect, i_clip_rect: u32, color: ColorU32) {
