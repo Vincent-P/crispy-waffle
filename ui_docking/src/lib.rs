@@ -15,13 +15,14 @@ pub struct Docking {
     ui: DockingUi,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Direction {
     None,
     Horizontal,
     Vertical,
 }
 
+#[derive(Debug)]
 struct Area {
     direction: Direction,
     children: Vec<Handle<Area>>,
@@ -122,12 +123,28 @@ impl Docking {
     // Propagate rect to children, and select tabview if none is selected
     fn update_area(&mut self, area_handle: Handle<Area>, area_rect: Rect) {
         let area = self.areas.get_mut(area_handle);
-        if area.selected.is_none() && !area.tabviews.is_empty() {
-            area.selected = Some(area.tabviews[0]);
+
+        // Update the selected tabview
+        match area.selected {
+            Some(i_selected) => {
+                if area
+                    .tabviews
+                    .iter()
+                    .position(|i_tabview| *i_tabview == i_selected)
+                    .is_none()
+                {
+                    area.selected = area.tabviews.iter().next().map(|r| *r);
+                }
+            }
+
+            // Select first tab if none is selected
+            None => {
+                if !area.tabviews.is_empty() {
+                    area.selected = Some(area.tabviews[0]);
+                }
+            }
         }
-        if area.selected.is_some() && area.tabviews.is_empty() {
-            area.selected = None;
-        }
+
         area.rect = area_rect;
 
         let direction = area.direction;
@@ -199,22 +216,37 @@ impl Docking {
         ui.state.add_rect_to_last_container(rect);
     }
 
-    fn draw_area_overlay(
-        &mut self,
+    fn draw_area_overlay_impl(
+        docking_ui: &mut DockingUi,
+        tabviews: &mut Vec<TabView>,
         ui: &mut ui::Ui,
         drawer: &mut Drawer,
         area_handle: Handle<Area>,
+        area: &Area,
     ) {
-        let area = self.areas.get_mut(area_handle);
-        let em = self.ui.em_size;
+        let em = docking_ui.em_size;
 
         // Don't draw overlay on internal areas, only leaves
         if !area.children.is_empty() {
             return;
         }
 
+        {
+            let text = format!("Tabviews: {:?}", area.tabviews);
+            let (label_run, label_layout) = drawer.shape_and_layout_text(&ui.theme.face(), &text);
+            let label_size = label_layout.size();
+
+            drawer.draw_text_run(
+                &label_run,
+                &label_layout,
+                Rect::center(area.rect, label_size).pos,
+                0,
+            );
+        }
+
+        // Draw an overlay if the currently dragged tab is hovering this area
         if ui.inputs.is_hovering(area.rect) {
-            if let Some(active_tab) = self.ui.active_tab {
+            if let Some(active_tab) = docking_ui.active_tab {
                 let area_overlay_rect = area.rect.inset(1.0 * em);
                 drawer.draw_colored_rect(
                     area_overlay_rect,
@@ -224,15 +256,44 @@ impl Docking {
 
                 // Tab was dropped in this area
                 if !ui.inputs.left_mouse_button_pressed {
-                    let tabview = &mut self.tabviews[active_tab];
+                    let tabview = &mut tabviews[active_tab];
                     let previous_area = tabview.area;
                     let new_area = area_handle;
-                    self.ui
+                    docking_ui
                         .drag_events
                         .push((active_tab, previous_area, new_area));
 
-                    self.ui.active_tab = None;
+                    docking_ui.active_tab = None;
                 }
+            }
+        }
+    }
+
+    fn draw_area_rec(&mut self, ui: &mut ui::Ui, drawer: &mut Drawer, area_handle: Handle<Area>) {
+        let area = self.areas.get_mut(area_handle);
+        if area.children.is_empty() {
+            let (tabwell_rect, _content_rect) = area.rects(self.ui.em_size);
+
+            if let Some(tabwell_rect) = tabwell_rect {
+                let mut tabwell_rect = tabwell_rect;
+
+                // Draw the tabwell background
+                drawer.draw_colored_rect(tabwell_rect, 0, ColorU32::greyscale(0x38));
+
+                // Draw each tab title
+                for i_tabview in area.tabviews.clone() {
+                    let tabview = &self.tabviews[i_tabview];
+
+                    let (tab_rect, rest_rect) = tabwell_rect
+                        .split_left_pixels((tabview.title.len() as f32) * 0.75 * self.ui.em_size);
+                    tabwell_rect = rest_rect;
+
+                    self.draw_tabbar(ui, drawer, i_tabview, tab_rect);
+                }
+            }
+        } else {
+            for child in area.children.clone() {
+                self.draw_area_rec(ui, drawer, child);
             }
         }
     }
@@ -240,6 +301,7 @@ impl Docking {
     fn draw_docking(&mut self, ui: &mut ui::Ui, drawer: &mut Drawer) {
         let em = self.ui.em_size;
 
+        // Draw the currently dragged tabview
         if let Some(active_tab) = self.ui.active_tab {
             let tabview = &self.tabviews[active_tab];
 
@@ -262,56 +324,43 @@ impl Docking {
         }
     }
 
-    fn draw_area(&mut self, ui: &mut ui::Ui, drawer: &mut Drawer, area_handle: Handle<Area>) {
-        let area = self.areas.get_mut(area_handle);
-        if area.children.is_empty() {
-            let (tabwell_rect, _content_rect) = area.rects(self.ui.em_size);
-
-            if let Some(tabwell_rect) = tabwell_rect {
-                let mut tabwell_rect = tabwell_rect;
-
-                drawer.draw_colored_rect(tabwell_rect, 0, ColorU32::greyscale(0x38));
-
-                for i_tabview in area.tabviews.clone() {
-                    let tabview = &self.tabviews[i_tabview];
-
-                    let (tab_rect, rest_rect) = tabwell_rect
-                        .split_left_pixels((tabview.title.len() as f32) * 0.75 * self.ui.em_size);
-                    tabwell_rect = rest_rect;
-
-                    self.draw_tabbar(ui, drawer, i_tabview, tab_rect);
-                }
-            }
-
-            // Should be called after all tabbar interactions are drawn
-            self.draw_area_overlay(ui, drawer, area_handle);
-        } else {
-            for child in area.children.clone() {
-                self.draw_area(ui, drawer, child);
-            }
-        }
-    }
-
     // Draw tabwells and docking overlay
     pub fn end_docking(&mut self, ui: &mut ui::Ui, drawer: &mut Drawer) {
-        self.draw_area(ui, drawer, self.root);
+        self.draw_area_rec(ui, drawer, self.root);
         self.draw_docking(ui, drawer);
 
-        // drop events
-        for (active_tab, previous_area, new_area) in &self.ui.drag_events {
-            {
-                let previous_tabviews = &mut self.areas.get_mut(*previous_area).tabviews;
+        for (area_handle, area) in self.areas.iter() {
+            Self::draw_area_overlay_impl(
+                &mut self.ui,
+                &mut self.tabviews,
+                ui,
+                drawer,
+                area_handle,
+                area,
+            );
+        }
 
-                if previous_tabviews.len() > 1 {
-                    previous_tabviews.swap_remove(*active_tab);
-                } else {
-                    previous_tabviews.pop();
-                }
+        // drop events
+        for (active_tab, previous_area_handle, new_area_handle) in &self.ui.drag_events {
+            let previous_area = &mut self.areas.get_mut(*previous_area_handle);
+
+            if previous_area.tabviews.len() > 1 {
+                previous_area.tabviews.swap_remove(
+                    previous_area
+                        .tabviews
+                        .iter()
+                        .position(|i_tabview| *i_tabview == *active_tab)
+                        .unwrap(),
+                );
+            } else {
+                previous_area.tabviews.pop();
             }
 
-            self.areas.get_mut(*new_area).tabviews.push(*active_tab);
+            let new_area = &mut self.areas.get_mut(*new_area_handle);
+            new_area.tabviews.push(*active_tab);
+            new_area.selected = Some(*active_tab);
 
-            self.tabviews[*active_tab].area = *new_area;
+            self.tabviews[*active_tab].area = *new_area_handle;
         }
         self.ui.drag_events.clear();
     }

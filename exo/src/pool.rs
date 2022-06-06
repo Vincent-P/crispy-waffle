@@ -7,6 +7,7 @@ struct Metadata {
     flags: u32,
 }
 
+#[derive(Debug)]
 pub struct Handle<T> {
     index: u32,
     generation: u32,
@@ -197,6 +198,64 @@ impl<T> Entry<T> {
         match self {
             Entry::Filled(inner) => Some(inner),
             _ => None,
+        }
+    }
+}
+
+// -- Iterator
+
+pub struct PoolIterator<'a, T> {
+    index: Option<usize>,
+    pool: &'a Pool<T>,
+}
+
+impl<T> Pool<T> {
+    pub fn iter(&self) -> PoolIterator<'_, T> {
+        PoolIterator {
+            index: None,
+            pool: &self,
+        }
+    }
+}
+
+impl<'a, T> Iterator for PoolIterator<'a, T> {
+    type Item = (Handle<T>, &'a T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut i = match &mut self.index {
+            Some(i) => {
+                *i += 1;
+                *i
+            }
+            None => 0,
+        };
+
+        loop {
+            if i >= self.pool.values.len() {
+                break;
+            }
+            let (metadata, _) = &self.pool.values[i];
+            if metadata.get_is_occupied() {
+                break;
+            }
+            i += 1;
+        }
+
+        self.index = Some(i);
+
+        if i < self.pool.values.len() {
+            let (metadata, element) = &self.pool.values[i];
+            assert!(metadata.get_is_occupied());
+
+            let handle = Handle {
+                index: i as u32,
+                generation: metadata.get_generation(),
+                marker: Default::default(),
+            };
+
+            Some((handle, element.as_filled().unwrap()))
+        } else {
+            None
         }
     }
 }
