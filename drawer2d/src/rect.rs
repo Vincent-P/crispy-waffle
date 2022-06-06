@@ -93,4 +93,18 @@ impl Rect {
             },
         )
     }
+
+    pub fn split_horizontal_range(&self, start_ratio: f32, end_ratio: f32) -> Self {
+        Self {
+            pos: [self.pos[0] + self.size[0] * start_ratio, self.pos[1]],
+            size: [self.size[0] * (end_ratio - start_ratio), self.size[1]],
+        }
+    }
+
+    pub fn split_vertical_range(&self, start_ratio: f32, end_ratio: f32) -> Self {
+        Self {
+            pos: [self.pos[0], self.pos[1] + self.size[1] * start_ratio],
+            size: [self.size[0], self.size[1] * (end_ratio - start_ratio)],
+        }
+    }
 }
