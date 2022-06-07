@@ -629,6 +629,7 @@ struct App {
     pub ui: ui::Ui,
     fps_histogram: custom_ui::FpsHistogram,
     docking: ui_docking::Docking,
+    font_size: f32,
 }
 
 impl App {
@@ -854,7 +855,9 @@ fn main() -> Result<()> {
         [GLYPH_ATLAS_RESOLUTION, GLYPH_ATLAS_RESOLUTION],
         renderer.get_glyph_atlas_descriptor(),
     );
-    let ui = ui::Ui::new(Rc::new(ui_font), 18.0);
+
+    let font_size = 18.0;
+    let ui = ui::Ui::new(Rc::new(ui_font), font_size * (window.scale_factor() as f32));
 
     let mut app = App {
         renderer,
@@ -862,6 +865,7 @@ fn main() -> Result<()> {
         ui,
         fps_histogram: custom_ui::FpsHistogram::new(),
         docking: ui_docking::Docking::new(),
+        font_size,
     };
 
     let now = Instant::now();
@@ -902,6 +906,13 @@ fn main() -> Result<()> {
                     app.ui
                         .set_left_mouse_button_pressed(state == ElementState::Pressed);
                 }
+            }
+
+            Event::WindowEvent {
+                event: WindowEvent::ScaleFactorChanged { scale_factor, .. },
+                window_id,
+            } => {
+                app.ui.theme.font_size = app.font_size * (scale_factor as f32);
             }
 
             Event::RedrawRequested(window_id) if window_id == window.id() => {}
