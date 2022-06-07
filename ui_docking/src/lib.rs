@@ -120,6 +120,11 @@ impl Docking {
         }
     }
 
+    fn remove_empty_areas_rec(&mut self, area_handle: Handle<Area>) {}
+    fn remove_empty_areas(&mut self) {
+        self.remove_empty_areas_rec(self.root);
+    }
+
     // Propagate rect to children, and select tabview if none is selected
     fn update_area(&mut self, area_handle: Handle<Area>, area_rect: Rect) {
         let area = self.areas.get_mut(area_handle);
@@ -169,6 +174,7 @@ impl Docking {
     }
 
     pub fn begin_docking(&mut self, ui: &ui::Ui, rect: Rect) {
+        self.remove_empty_areas();
         self.update_area(self.root, rect);
 
         self.ui.em_size = ui.theme.font_size;
@@ -226,35 +232,27 @@ impl Docking {
     ) {
         let em = docking_ui.em_size;
 
-        // Don't draw overlay on internal areas, only leaves
+        // Dont draw overlay on internal areas
         if !area.children.is_empty() {
             return;
-        }
-
-        {
-            let text = format!("Tabviews: {:?}", area.tabviews);
-            let (label_run, label_layout) = drawer.shape_and_layout_text(&ui.theme.face(), &text);
-            let label_size = label_layout.size();
-
-            drawer.draw_text_run(
-                &label_run,
-                &label_layout,
-                Rect::center(area.rect, label_size).pos,
-                0,
-            );
         }
 
         // Draw an overlay if the currently dragged tab is hovering this area
         if ui.inputs.is_hovering(area.rect) {
             if let Some(active_tab) = docking_ui.active_tab {
-                let area_overlay_rect = area.rect.inset(1.0 * em);
-                drawer.draw_colored_rect(
-                    area_overlay_rect,
-                    0,
-                    ColorU32::from_f32(0.05, 0.05, 0.33, 0.5),
-                );
+                let overlay_rect = area.rect.inset(1.0 * em);
+                let split_center_rect = Rect::center(overlay_rect, [50.0, 50.0]);
+                let split_right_rect =
+                    Rect::center(overlay_rect, [50.0, 50.0]).offset([50.0 + 1.0 * em, 0.0]);
+                let split_left_rect =
+                    Rect::center(overlay_rect, [50.0, 50.0]).offset([-50.0 - 1.0 * em, 0.0]);
+                let split_top_rect =
+                    Rect::center(overlay_rect, [50.0, 50.0]).offset([0.0, -50.0 - 1.0 * em]);
+                let split_bottom_rect =
+                    Rect::center(overlay_rect, [50.0, 50.0]).offset([0.0, 50.0 + 1.0 * em]);
 
-                // Tab was dropped in this area
+                // -- Interactions
+                // Tab was dropped in the overlay
                 if !ui.inputs.left_mouse_button_pressed {
                     let tabview = &mut tabviews[active_tab];
                     let previous_area = tabview.area;
@@ -265,12 +263,35 @@ impl Docking {
 
                     docking_ui.active_tab = None;
                 }
+
+                // -- Drawing
+                let overlay_color = ColorU32::from_f32(0.05, 0.05, 0.15, 0.25);
+                let hover_color = ColorU32::from_f32(0.33, 0.05, 0.05, 0.25);
+
+                drawer.draw_colored_rect(overlay_rect, 0, overlay_color);
+
+                for rect in &[
+                    split_center_rect,
+                    split_right_rect,
+                    split_left_rect,
+                    split_top_rect,
+                    split_bottom_rect,
+                ] {
+                    let color = if ui.inputs.is_hovering(*rect) {
+                        hover_color
+                    } else {
+                        overlay_color
+                    };
+                    drawer.draw_colored_rect(*rect, 0, color);
+                }
             }
         }
     }
 
     fn draw_area_rec(&mut self, ui: &mut ui::Ui, drawer: &mut Drawer, area_handle: Handle<Area>) {
         let area = self.areas.get_mut(area_handle);
+
+        // Leaf area (contains tabs)
         if area.children.is_empty() {
             let (tabwell_rect, _content_rect) = area.rects(self.ui.em_size);
 
@@ -292,6 +313,27 @@ impl Docking {
                 }
             }
         } else {
+            // Internal nodes (contain other areas)
+            match area.direction {
+                Direction::Vertical => {}
+                Direction::Horizontal => {
+                    let mut previous_split = 0.0;
+                    let mut split_iter = area.splits.iter_mut().peekable();
+                    loop {
+                        let cur_split = match split_iter.next() {
+                            Some(s) => s,
+                            None => break,
+                        };
+                        let next_split = split_iter.peek().map(|r| **r).unwrap_or(1.0);
+
+                        ui.splitter_x(drawer, ui::Splitter { rect: area.rect }, cur_split);
+                        *cur_split = cur_split.clamp(previous_split + 0.02, next_split - 0.02);
+                        previous_split = *cur_split;
+                    }
+                }
+                _ => {}
+            }
+
             for child in area.children.clone() {
                 self.draw_area_rec(ui, drawer, child);
             }

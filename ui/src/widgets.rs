@@ -10,11 +10,9 @@ impl Ui {
         let mut result = false;
         let id = self.activation.make_id();
 
-        let (label_run, label_layout) =
-            drawer.shape_and_layout_text(&self.theme.face(), button.label);
-        let label_size = label_layout.size();
-
         let button_rect = button.rect;
+
+        // -- Interactions
 
         if self.inputs.is_hovering(button_rect) {
             self.activation.focused = Some(id);
@@ -27,6 +25,8 @@ impl Ui {
             result = true;
         }
 
+        // -- Drawing
+
         let color = match (self.activation.focused, self.activation.active) {
             (Some(f), Some(a)) if f == id && a == id => self.theme.button_pressed_bg_color,
             (Some(f), _) if f == id => self.theme.button_hover_bg_color,
@@ -34,6 +34,10 @@ impl Ui {
         };
 
         drawer.draw_colored_rect(button_rect, 0, color);
+
+        let (label_run, label_layout) =
+            drawer.shape_and_layout_text(&self.theme.face(), button.label);
+        let label_size = label_layout.size();
 
         drawer.draw_text_run(
             &label_run,
@@ -43,6 +47,54 @@ impl Ui {
         );
 
         self.state.add_rect_to_last_container(button_rect);
+
+        result
+    }
+}
+
+pub struct Splitter {
+    pub rect: Rect,
+}
+
+impl Ui {
+    pub fn splitter_x(&mut self, drawer: &mut Drawer, splitter: Splitter, value: &mut f32) -> bool {
+        let mut result = false;
+        let id = self.activation.make_id();
+
+        let input_width = 5.0;
+        let input_rect = Rect {
+            pos: [
+                splitter.rect.pos[0] + (*value) * splitter.rect.size[0] - 0.5 * input_width,
+                splitter.rect.pos[1],
+            ],
+            size: [input_width, splitter.rect.size[1]],
+        };
+
+        // -- Interactions
+
+        if self.inputs.is_hovering(input_rect) {
+            self.activation.focused = Some(id);
+            if self.activation.active == None && self.inputs.left_mouse_button_pressed {
+                self.activation.active = Some(id);
+            }
+        }
+
+        if self.inputs.left_mouse_button_pressed && self.activation.active == Some(id) {
+            *value = (self.inputs.mouse_pos[0] - splitter.rect.pos[0]) / splitter.rect.size[0];
+            result = true;
+        }
+
+        // -- Drawing
+
+        let color = match (self.activation.focused, self.activation.active) {
+            (Some(f), Some(a)) if f == id && a == id => self.theme.button_pressed_bg_color,
+            (Some(f), _) if f == id => self.theme.button_hover_bg_color,
+            _ => self.theme.button_bg_color,
+        };
+
+        drawer.draw_colored_rect(input_rect, 0, color);
+
+        self.state.add_rect_to_last_container(input_rect);
 
         result
     }

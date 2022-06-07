@@ -854,7 +854,7 @@ fn main() -> Result<()> {
         [GLYPH_ATLAS_RESOLUTION, GLYPH_ATLAS_RESOLUTION],
         renderer.get_glyph_atlas_descriptor(),
     );
-    let ui = ui::Ui::new(Rc::new(ui_font), 24.0);
+    let ui = ui::Ui::new(Rc::new(ui_font), 18.0);
 
     let mut app = App {
         renderer,
