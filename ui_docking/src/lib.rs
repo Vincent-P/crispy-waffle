@@ -47,10 +47,27 @@ struct TabView {
     area: Handle<Area>,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum DragType {
+    SplitTop,
+    SplitBottom,
+    SplitLeft,
+    SplitRight,
+    Dock,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DragEvent {
+    i_tabview: usize,
+    previous_area: Handle<Area>,
+    next_area: Handle<Area>,
+    drag_type: DragType,
+}
+
 struct DockingUi {
     em_size: f32,
     active_tab: Option<usize>,
-    drag_events: Vec<(usize, Handle<Area>, Handle<Area>)>,
+    dragging_events: Vec<DragEvent>,
 }
 
 impl Docking {
@@ -64,39 +81,52 @@ impl Docking {
             ui: DockingUi {
                 em_size: 0.0,
                 active_tab: None,
-                drag_events: Vec::new(),
+                dragging_events: Vec::new(),
             },
         };
 
-        let split_left = docking.area_tree.add(Area::from(AreaContainer {
-            selected: None,
-            tabviews: Vec::new(),
-            rect: Rect {
-                pos: [0.0, 0.0],
-                size: [0.0, 0.0],
-            },
-        }));
+        if false {
+            let split_left = docking.area_tree.add(Area::from(AreaContainer {
+                selected: None,
+                tabviews: Vec::new(),
+                rect: Rect {
+                    pos: [0.0, 0.0],
+                    size: [0.0, 0.0],
+                },
+            }));
 
-        let split_right = docking.area_tree.add(Area::from(AreaContainer {
-            selected: None,
-            tabviews: Vec::new(),
-            rect: Rect {
-                pos: [0.0, 0.0],
-                size: [0.0, 0.0],
-            },
-        }));
+            let split_right = docking.area_tree.add(Area::from(AreaContainer {
+                selected: None,
+                tabviews: Vec::new(),
+                rect: Rect {
+                    pos: [0.0, 0.0],
+                    size: [0.0, 0.0],
+                },
+            }));
 
-        docking.root = docking.area_tree.add(Area::from(AreaSplitter {
-            direction: Direction::Horizontal,
-            children: vec![split_left, split_right],
-            splits: vec![0.3],
-            rect: Rect {
-                pos: [0.0, 0.0],
-                size: [0.0, 0.0],
-            },
-        }));
+            docking.root = docking.area_tree.add(Area::from(AreaSplitter {
+                direction: Direction::Horizontal,
+                children: vec![split_left, split_right],
+                splits: vec![0.3],
+                rect: Rect {
+                    pos: [0.0, 0.0],
+                    size: [0.0, 0.0],
+                },
+            }));
 
-        docking.default_area = split_left;
+            docking.default_area = split_left;
+        } else {
+            docking.root = docking.area_tree.add(Area::from(AreaContainer {
+                selected: None,
+                tabviews: Vec::new(),
+                rect: Rect {
+                    pos: [0.0, 0.0],
+                    size: [0.0, 0.0],
+                },
+            }));
+
+            docking.default_area = docking.root;
+        }
 
         docking
     }
@@ -119,6 +149,7 @@ impl Docking {
                     &mut self.tabviews,
                     i_new_tabview,
                     self.default_area,
+                    DragType::Dock,
                 );
 
                 i_new_tabview
@@ -139,16 +170,23 @@ impl Docking {
         tabviews: &mut Vec<TabView>,
         i_tabview: usize,
         area_handle: Handle<Area>,
+        drag_type: DragType,
     ) {
         let area = area_tree.get_mut(area_handle);
         let tabview = &mut tabviews[i_tabview];
 
-        match area {
-            Area::Container(container) => {
+        match drag_type {
+            DragType::SplitTop
+            | DragType::SplitBottom
+            | DragType::SplitLeft
+            | DragType::SplitRight => {}
+            DragType::Dock => {
+                let container = area
+                    .container_mut()
+                    .expect("Tab views should not be inserted in splitters.");
                 container.tabviews.push(i_tabview);
                 tabview.area = area_handle;
             }
-            Area::Splitter(_splitter) => {}
         }
     }
 
@@ -177,7 +215,11 @@ impl Docking {
 
                 tabview.area = Handle::invalid();
             }
-            Area::Splitter(_splitter) => {}
+            Area::Splitter(_splitter) => {
+                panic!(
+                    "Tabviews should not be removed from splitter (there is no tabviews field...)"
+                )
+            }
         }
     }
 
@@ -297,56 +339,81 @@ impl Docking {
         ui: &mut ui::Ui,
         drawer: &mut Drawer,
         area_handle: Handle<Area>,
-        area: &AreaContainer,
+        area: &Area,
     ) {
         let em = docking_ui.em_size;
 
-        // Draw an overlay if the currently dragged tab is hovering this area
-        if ui.inputs.is_hovering(area.rect) {
-            if let Some(active_tab) = docking_ui.active_tab {
-                let overlay_rect = area.rect.inset(1.0 * em);
-                let split_center_rect = Rect::center(overlay_rect, [50.0, 50.0]);
-                let split_right_rect =
-                    Rect::center(overlay_rect, [50.0, 50.0]).offset([50.0 + 1.0 * em, 0.0]);
-                let split_left_rect =
-                    Rect::center(overlay_rect, [50.0, 50.0]).offset([-50.0 - 1.0 * em, 0.0]);
-                let split_top_rect =
-                    Rect::center(overlay_rect, [50.0, 50.0]).offset([0.0, -50.0 - 1.0 * em]);
-                let split_bottom_rect =
-                    Rect::center(overlay_rect, [50.0, 50.0]).offset([0.0, 50.0 + 1.0 * em]);
+        let active_tab = match docking_ui.active_tab {
+            Some(i) => i,
+            None => return,
+        };
 
-                // -- Interactions
-                // Tab was dropped in the overlay
-                if !ui.inputs.left_mouse_button_pressed {
-                    let tabview = &mut tabviews[active_tab];
-                    let previous_area = tabview.area;
-                    let new_area = area_handle;
-                    docking_ui
-                        .drag_events
-                        .push((active_tab, previous_area, new_area));
+        match area {
+            Area::Splitter(splitter) => match splitter.direction {
+                Direction::Horizontal => {
+                    let mut splits = vec![0.0];
+                    for split in &splitter.splits {
+                        splits.push(*split);
+                    }
+                    splits.push(1.0);
 
-                    docking_ui.active_tab = None;
+                    const HANDLE_WIDTH: f32 = 10.0;
+
+                    let rects = splits.into_iter().map(|split| Rect {
+                        pos: [
+                            splitter.rect.pos[0] + split * splitter.rect.size[0]
+                                - HANDLE_WIDTH / 2.0,
+                            splitter.rect.pos[1],
+                        ],
+                        size: [HANDLE_WIDTH, splitter.rect.size[1]],
+                    });
+
+                    for (i_rect, rect) in rects.into_iter().enumerate() {
+                        let overlay_color = ColorU32::from_f32(1.0, 0.05, 1.0, 0.25);
+                        drawer.draw_colored_rect(rect, 0, overlay_color);
+                    }
                 }
+                Direction::Vertical => {
+                    let mut splits = vec![0.0];
+                    for split in &splitter.splits {
+                        splits.push(*split);
+                    }
+                    splits.push(1.0);
 
-                // -- Drawing
-                let overlay_color = ColorU32::from_f32(0.05, 0.05, 0.15, 0.25);
-                let hover_color = ColorU32::from_f32(0.33, 0.05, 0.05, 0.25);
+                    const HANDLE_WIDTH: f32 = 10.0;
 
+                    let rects = splits.into_iter().map(|split| Rect {
+                        pos: [
+                            splitter.rect.pos[0],
+                            splitter.rect.pos[1] + split * splitter.rect.size[1]
+                                - HANDLE_WIDTH / 2.0,
+                        ],
+                        size: [splitter.rect.size[0], HANDLE_WIDTH],
+                    });
+
+                    for (i_rect, rect) in rects.into_iter().enumerate() {
+                        let overlay_color = ColorU32::from_f32(1.0, 0.05, 1.0, 0.25);
+                        drawer.draw_colored_rect(rect, 0, overlay_color);
+                    }
+                }
+            },
+            Area::Container(container) => {
+                // Draw an overlay to dock tabs
+                let overlay_rect = container.rect.inset(10.0 * em);
+                let overlay_color = ColorU32::from_f32(1.0, 0.05, 1.0, 0.25);
                 drawer.draw_colored_rect(overlay_rect, 0, overlay_color);
 
-                for rect in &[
-                    split_center_rect,
-                    split_right_rect,
-                    split_left_rect,
-                    split_top_rect,
-                    split_bottom_rect,
-                ] {
-                    let color = if ui.inputs.is_hovering(*rect) {
-                        hover_color
-                    } else {
-                        overlay_color
-                    };
-                    drawer.draw_colored_rect(*rect, 0, color);
+                if ui.inputs.is_hovering(overlay_rect) {
+                    if !ui.inputs.left_mouse_button_pressed {
+                        docking_ui.dragging_events.push(DragEvent {
+                            i_tabview: active_tab,
+                            previous_area: tabviews[active_tab].area,
+                            next_area: area_handle,
+                            drag_type: DragType::Dock,
+                        });
+
+                        docking_ui.active_tab = None;
+                    }
                 }
             }
         }
@@ -452,34 +519,33 @@ impl Docking {
         self.draw_docking(ui, drawer);
 
         for (area_handle, area) in self.area_tree.iter() {
-            if let Area::Container(container) = area {
-                Self::draw_area_overlay(
-                    &mut self.ui,
-                    &mut self.tabviews,
-                    ui,
-                    drawer,
-                    area_handle,
-                    container,
-                );
-            }
+            Self::draw_area_overlay(
+                &mut self.ui,
+                &mut self.tabviews,
+                ui,
+                drawer,
+                area_handle,
+                area,
+            );
         }
 
         // drop events
-        for (active_tab, previous_area_handle, new_area_handle) in &self.ui.drag_events {
+        for event in &self.ui.dragging_events {
             Self::remove_tabview(
                 &mut self.area_tree,
                 &mut self.tabviews,
-                *active_tab,
-                *previous_area_handle,
+                event.i_tabview,
+                event.previous_area,
             );
             Self::insert_tabview(
                 &mut self.area_tree,
                 &mut self.tabviews,
-                *active_tab,
-                *new_area_handle,
+                event.i_tabview,
+                event.next_area,
+                event.drag_type,
             );
         }
-        self.ui.drag_events.clear();
+        self.ui.dragging_events.clear();
     }
 }
 
