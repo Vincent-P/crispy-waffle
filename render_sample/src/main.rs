@@ -629,6 +629,7 @@ struct App {
     pub ui: ui::Ui,
     fps_histogram: custom_ui::FpsHistogram,
     docking: ui_docking::Docking,
+    show_fps: bool,
     font_size: f32,
 }
 
@@ -727,6 +728,23 @@ impl App {
                     self.renderer.i_frame
                 )),
             );
+
+            let mut cursor = content1_rect.pos;
+            cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
+            if self.ui.button(
+                &mut self.drawer,
+                ui::Button {
+                    label: "Toggle show histogram",
+                    rect: Rect {
+                        pos: cursor,
+                        size: [20.0 * em, 1.5 * em],
+                    },
+                    enabled: true,
+                },
+            ) {
+                self.show_fps = !self.show_fps;
+            }
+            cursor[1] += 3.0 * em;
         }
 
         if let Some(content2_rect) = self.docking.tabview("Content 2") {
@@ -753,7 +771,7 @@ impl App {
                     label: "Increase font size by 2",
                     rect: Rect {
                         pos: cursor,
-                        size: [20.0 * em, 0.5 * em],
+                        size: [20.0 * em, 1.5 * em],
                     },
                     enabled: true,
                 },
@@ -768,7 +786,7 @@ impl App {
                     label: "Decrease font size by 2",
                     rect: Rect {
                         pos: cursor,
-                        size: [20.0 * em, 0.5 * em],
+                        size: [20.0 * em, 1.5 * em],
                     },
                     enabled: true,
                 },
@@ -794,21 +812,23 @@ impl App {
         );
 
         // -- Fps histogram
-        let histogram_rect = Rect {
-            pos: [
-                fullscreen.pos[0] + fullscreen.size[0] - 250.0 - 1.0 * em,
-                1.0 * em,
-            ],
-            size: [250.0, 150.0],
-        };
-        custom_ui::widgets::histogram(
-            &mut self.ui,
-            &mut self.drawer,
-            custom_ui::widgets::FpsHistogram {
-                histogram: &self.fps_histogram,
-                rect: histogram_rect,
-            },
-        );
+        if self.show_fps {
+            let histogram_rect = Rect {
+                pos: [
+                    fullscreen.pos[0] + fullscreen.size[0] - 250.0 - 1.0 * em,
+                    1.0 * em,
+                ],
+                size: [250.0, 150.0],
+            };
+            custom_ui::widgets::histogram(
+                &mut self.ui,
+                &mut self.drawer,
+                custom_ui::widgets::FpsHistogram {
+                    histogram: &self.fps_histogram,
+                    rect: histogram_rect,
+                },
+            );
+        }
 
         self.ui.end_frame();
     }
@@ -857,6 +877,7 @@ fn main() -> Result<()> {
         ui,
         fps_histogram: custom_ui::FpsHistogram::new(),
         docking: ui_docking::Docking::new(),
+        show_fps: true,
         font_size,
     };
 
