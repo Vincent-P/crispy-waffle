@@ -213,7 +213,7 @@ impl<T> Pool<T> {
     pub fn iter(&self) -> PoolIterator<'_, T> {
         PoolIterator {
             index: None,
-            pool: &self,
+            pool: self,
         }
     }
 }
