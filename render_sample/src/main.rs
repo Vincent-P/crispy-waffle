@@ -657,6 +657,7 @@ impl App {
             ui::Button {
                 label: "Open File",
                 rect: label_rect,
+                enabled: true,
             },
         );
         self.ui.end_container();
@@ -670,6 +671,7 @@ impl App {
             ui::Button {
                 label: "TEst",
                 rect: label_rect,
+                enabled: true,
             },
         );
 
@@ -714,7 +716,7 @@ impl App {
 
         self.docking.begin_docking(&self.ui, content_rect);
 
-        if let Some(content1_rect) = self.docking.tab_view("Content 1") {
+        if let Some(content1_rect) = self.docking.tabview("Content 1") {
             draw_area(
                 &mut self.ui,
                 &mut self.drawer,
@@ -727,7 +729,7 @@ impl App {
             );
         }
 
-        if let Some(content2_rect) = self.docking.tab_view("Content 2") {
+        if let Some(content2_rect) = self.docking.tabview("Content 2") {
             let mut cursor = content2_rect.pos;
             cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
 
@@ -753,6 +755,7 @@ impl App {
                         pos: cursor,
                         size: [20.0 * em, 0.5 * em],
                     },
+                    enabled: true,
                 },
             ) {
                 self.ui.theme.font_size += 2.0;
@@ -767,6 +770,7 @@ impl App {
                         pos: cursor,
                         size: [20.0 * em, 0.5 * em],
                     },
+                    enabled: true,
                 },
             ) {
                 self.ui.theme.font_size -= 2.0;

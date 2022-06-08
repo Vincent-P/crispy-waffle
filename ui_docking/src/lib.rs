@@ -11,7 +11,7 @@ pub struct Docking {
 }
 
 // Split direction
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Direction {
     Horizontal,
     Vertical,
@@ -102,7 +102,7 @@ impl Docking {
     }
 
     // Immediate mode tab rendering, returns the drawing area if the tab is visible
-    pub fn tab_view(&mut self, tab_name: &str) -> Option<Rect> {
+    pub fn tabview(&mut self, tab_name: &str) -> Option<Rect> {
         let i_tabview = self
             .tabviews
             .iter()
@@ -130,7 +130,9 @@ impl Docking {
 
         let container = area.container().unwrap();
         match container.selected {
-            Some(i_selected) if i_selected == i_tabview => Some(container.rects(self.ui.em_size).1),
+            Some(i_selected) if container.tabviews[i_selected] == i_tabview => {
+                Some(container.rects(self.ui.em_size).1)
+            }
             _ => None,
         }
     }
@@ -146,7 +148,6 @@ impl Docking {
         let tabview = &mut tabviews[i_tabview];
 
         match drag_type {
-            _ => {}
             DragType::Dock => {
                 let container = area
                     .container_mut()
@@ -154,6 +155,7 @@ impl Docking {
                 container.tabviews.push(i_tabview);
                 tabview.area = area_handle;
             }
+            _ => {}
         }
     }
 
@@ -214,31 +216,14 @@ impl Docking {
 
     fn split_container(
         area_tree: &mut Pool<Area>,
-        root: Handle<Area>,
+        root: &mut Handle<Area>,
         area_handle: Handle<Area>,
         direction: Direction,
     ) {
-        let container = area_tree
-            .get_mut(area_handle)
-            .container_mut()
-            .expect("Cannot split splitters.");
+        // Only containers should be split
+        assert!(area_tree.get_mut(area_handle).container().is_some());
 
-        // TODO: Handle root case
-
-        // Find the parent of the area to split
-        let parent_handle = Self::find_parent(area_tree, root, area_handle).unwrap();
-
-        // Get its original position
-        let i_container_in_original_parent = area_tree
-            .get(parent_handle)
-            .splitter()
-            .expect("Parents are splitter")
-            .children
-            .iter()
-            .position(|child| *child == area_handle)
-            .unwrap();
-
-        // Replace it with a new split
+        // Create a new empty split
         let empty_container = area_tree.add(Area::from(AreaContainer {
             selected: None,
             tabviews: Vec::new(),
@@ -248,6 +233,7 @@ impl Docking {
             },
         }));
 
+        // Create a parent to split the empty split and the area
         let new_split = area_tree.add(Area::from(AreaSplitter {
             direction,
             children: vec![area_handle, empty_container],
@@ -258,11 +244,30 @@ impl Docking {
             },
         }));
 
-        area_tree
-            .get_mut(parent_handle)
-            .splitter_mut()
-            .expect("Parents are splitter")
-            .children[i_container_in_original_parent] = new_split;
+        // Find the parent of the area to split
+        if let Some(parent_handle) = Self::find_parent(area_tree, *root, area_handle) {
+            // Get the original position of the area
+            let i_container_in_original_parent = area_tree
+                .get(parent_handle)
+                .splitter()
+                .expect("Parents are splitter")
+                .children
+                .iter()
+                .position(|child| *child == area_handle)
+                .unwrap();
+
+            // Replace it with the newly created split
+            area_tree
+                .get_mut(parent_handle)
+                .splitter_mut()
+                .expect("Parents are splitter")
+                .children[i_container_in_original_parent] = new_split;
+        } else {
+            // If the area doesn't have a parent, it should be the root
+            assert!(area_handle == *root);
+
+            *root = new_split;
+        }
     }
 
     // Propagate rect to children, and select tabview if none is selected
@@ -274,19 +279,19 @@ impl Docking {
                 // Update the selected tabview
                 match container.selected {
                     Some(i_selected) => {
-                        if container
-                            .tabviews
-                            .iter()
-                            .any(|i_tabview| *i_tabview == i_selected)
-                        {
-                            container.selected = container.tabviews.iter().next().copied();
+                        if container.tabviews.is_empty() {
+                            // Remove selection if there is no tabs
+                            container.selected = None;
+                        } else if i_selected >= container.tabviews.len() {
+                            // Select the first one if selection is invalid
+                            container.selected = Some(0);
                         }
                     }
 
                     // Select first tab if none is selected
                     None => {
                         if !container.tabviews.is_empty() {
-                            container.selected = Some(container.tabviews[0]);
+                            container.selected = Some(0);
                         }
                     }
                 }
@@ -341,7 +346,7 @@ impl Docking {
                 ui.activation.active = Some(id);
             }
         } else if ui.activation.active == Some(id) {
-            docking_ui.active_tab = Some(i_tabview);
+            docking_ui.active_tab = Some(area.tabviews[i_tabview]);
         }
 
         if ui.has_clicked(id) {
@@ -388,33 +393,6 @@ impl Docking {
 
         match area {
             Area::Splitter(splitter) => match splitter.direction {
-                Direction::Horizontal => {
-                    let mut splits = vec![0.0];
-                    for split in &splitter.splits {
-                        splits.push(*split);
-                    }
-                    splits.push(1.0);
-
-                    const HANDLE_WIDTH: f32 = 10.0;
-
-                    let rects = splits.into_iter().map(|split| Rect {
-                        pos: [
-                            splitter.rect.pos[0] + split * splitter.rect.size[0]
-                                - HANDLE_WIDTH / 2.0,
-                            splitter.rect.pos[1],
-                        ],
-                        size: [HANDLE_WIDTH, splitter.rect.size[1]],
-                    });
-
-                    for (i_rect, rect) in rects.into_iter().enumerate() {
-                        let overlay_color = ColorU32::from_f32(1.0, 0.05, 1.0, 0.25);
-                        drawer.draw_colored_rect(rect, 0, overlay_color);
-
-                        if ui.inputs.is_hovering(rect) && !ui.inputs.left_mouse_button_pressed {
-                            println!("Dropped tab #{} in {} split.", active_tab, i_rect);
-                        }
-                    }
-                }
                 Direction::Vertical => {
                     let mut splits = vec![0.0];
                     for split in &splitter.splits {
@@ -422,19 +400,46 @@ impl Docking {
                     }
                     splits.push(1.0);
 
-                    const HANDLE_WIDTH: f32 = 10.0;
+                    const HANDLE_WIDTH: f32 = 2.0;
+
+                    let rects = splits.into_iter().map(|split| Rect {
+                        pos: [
+                            splitter.rect.pos[0] + split * splitter.rect.size[0]
+                                - HANDLE_WIDTH * em / 2.0,
+                            splitter.rect.pos[1],
+                        ],
+                        size: [HANDLE_WIDTH * em, splitter.rect.size[1]],
+                    });
+
+                    for (i_rect, rect) in rects.into_iter().enumerate() {
+                        let overlay_color = ColorU32::from_f32(0.25, 0.01, 0.25, 0.25);
+                        drawer.draw_colored_rect(rect, 0, overlay_color);
+
+                        if ui.inputs.is_hovering(rect) && !ui.inputs.left_mouse_button_pressed {
+                            println!("Dropped tab #{} in {} split.", active_tab, i_rect);
+                        }
+                    }
+                }
+                Direction::Horizontal => {
+                    let mut splits = vec![0.0];
+                    for split in &splitter.splits {
+                        splits.push(*split);
+                    }
+                    splits.push(1.0);
+
+                    const HANDLE_WIDTH: f32 = 3.0;
 
                     let rects = splits.into_iter().map(|split| Rect {
                         pos: [
                             splitter.rect.pos[0],
                             splitter.rect.pos[1] + split * splitter.rect.size[1]
-                                - HANDLE_WIDTH / 2.0,
+                                - HANDLE_WIDTH * em / 2.0,
                         ],
-                        size: [splitter.rect.size[0], HANDLE_WIDTH],
+                        size: [splitter.rect.size[0], HANDLE_WIDTH * em],
                     });
 
                     for (i_rect, rect) in rects.into_iter().enumerate() {
-                        let overlay_color = ColorU32::from_f32(1.0, 0.05, 1.0, 0.25);
+                        let overlay_color = ColorU32::from_f32(0.25, 0.01, 0.25, 0.25);
                         drawer.draw_colored_rect(rect, 0, overlay_color);
 
                         if ui.inputs.is_hovering(rect) && !ui.inputs.left_mouse_button_pressed {
@@ -445,8 +450,8 @@ impl Docking {
             },
             Area::Container(container) => {
                 // Draw an overlay to dock tabs
-                let overlay_rect = container.rect.inset(10.0 * em);
-                let overlay_color = ColorU32::from_f32(1.0, 0.05, 1.0, 0.25);
+                let overlay_rect = container.rect.inset(2.0 * em);
+                let overlay_color = ColorU32::from_f32(0.25, 0.01, 0.25, 0.25);
                 drawer.draw_colored_rect(overlay_rect, 0, overlay_color);
 
                 if ui.inputs.is_hovering(overlay_rect) && !ui.inputs.left_mouse_button_pressed {
@@ -464,7 +469,13 @@ impl Docking {
     }
 
     // Draw the ui for a docking area
-    fn draw_area_rec(&mut self, ui: &mut ui::Ui, drawer: &mut Drawer, area_handle: Handle<Area>) {
+    fn draw_area_rec(
+        &mut self,
+        ui: &mut ui::Ui,
+        drawer: &mut Drawer,
+        area_handle: Handle<Area>,
+        parent_direction: Option<Direction>,
+    ) {
         let em = self.ui.em_size;
         let area = self.area_tree.get_mut(area_handle);
 
@@ -477,8 +488,8 @@ impl Docking {
                 drawer.draw_colored_rect(tabwell_rect, 0, ColorU32::greyscale(0x38));
 
                 // Draw each tab title
-                for i_tabview in container.tabviews.clone() {
-                    let tabview = &self.tabviews[i_tabview];
+                for i_tabview in 0..container.tabviews.len() {
+                    let tabview = &self.tabviews[container.tabviews[i_tabview]];
 
                     let (tab_rect, rest_rect) =
                         tabwell_rect.split_left_pixels((tabview.title.len() as f32) * 0.75 * em);
@@ -502,6 +513,7 @@ impl Docking {
                     ui::Button {
                         label: "H",
                         rect: split_h_rect,
+                        enabled: parent_direction != Some(Direction::Horizontal),
                     },
                 ) {
                     self.ui.dragging_events.push(DragEvent {
@@ -518,6 +530,7 @@ impl Docking {
                     ui::Button {
                         label: "V",
                         rect: split_v_rect,
+                        enabled: parent_direction != Some(Direction::Vertical),
                     },
                 ) {
                     self.ui.dragging_events.push(DragEvent {
@@ -529,18 +542,18 @@ impl Docking {
                 }
             }
             Area::Splitter(splitter) => {
-                match splitter.direction {
-                    Direction::Vertical => {}
-                    Direction::Horizontal => {
-                        let mut previous_split = 0.0;
-                        let mut split_iter = splitter.splits.iter_mut().peekable();
-                        loop {
-                            let cur_split = match split_iter.next() {
-                                Some(s) => s,
-                                None => break,
-                            };
-                            let next_split = split_iter.peek().map(|r| **r).unwrap_or(1.0);
+                let direction = splitter.direction;
+                let mut previous_split = 0.0;
+                let mut split_iter = splitter.splits.iter_mut().peekable();
+                loop {
+                    let cur_split = match split_iter.next() {
+                        Some(s) => s,
+                        None => break,
+                    };
+                    let next_split = split_iter.peek().map(|r| **r).unwrap_or(1.0);
 
+                    match direction {
+                        Direction::Vertical => {
                             ui.splitter_x(
                                 drawer,
                                 ui::Splitter {
@@ -548,14 +561,24 @@ impl Docking {
                                 },
                                 cur_split,
                             );
-                            *cur_split = cur_split.clamp(previous_split + 0.02, next_split - 0.02);
-                            previous_split = *cur_split;
+                        }
+                        Direction::Horizontal => {
+                            ui.splitter_y(
+                                drawer,
+                                ui::Splitter {
+                                    rect: splitter.rect,
+                                },
+                                cur_split,
+                            );
                         }
                     }
+
+                    *cur_split = cur_split.clamp(previous_split + 0.02, next_split - 0.02);
+                    previous_split = *cur_split;
                 }
 
                 for child in splitter.children.clone() {
-                    self.draw_area_rec(ui, drawer, child);
+                    self.draw_area_rec(ui, drawer, child, Some(direction));
                 }
             }
         }
@@ -589,7 +612,11 @@ impl Docking {
 
     // Draw tabwells and docking overlay
     pub fn end_docking(&mut self, ui: &mut ui::Ui, drawer: &mut Drawer) {
-        self.draw_area_rec(ui, drawer, self.root);
+        let root_direction = match self.area_tree.get(self.root) {
+            Area::Splitter(splitter) => Some(splitter.direction),
+            Area::Container(container) => None,
+        };
+        self.draw_area_rec(ui, drawer, self.root, root_direction);
         self.draw_docking(ui, drawer);
 
         for (area_handle, area) in self.area_tree.iter() {
@@ -625,7 +652,7 @@ impl Docking {
                 DragType::SplitVertical => {
                     Self::split_container(
                         &mut self.area_tree,
-                        self.root,
+                        &mut self.root,
                         event.previous_area,
                         Direction::Vertical,
                     );
@@ -633,7 +660,7 @@ impl Docking {
                 DragType::SplitHorizontal => {
                     Self::split_container(
                         &mut self.area_tree,
-                        self.root,
+                        &mut self.root,
                         event.previous_area,
                         Direction::Horizontal,
                     );
