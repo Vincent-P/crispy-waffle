@@ -89,7 +89,20 @@ impl Rect {
             },
             Self {
                 pos: [self.pos[0] + width, self.pos[1]],
-                size: [self.size[1] - width, self.size[1]],
+                size: [self.size[0] - width, self.size[1]],
+            },
+        )
+    }
+
+    pub fn split_right_pixels(&self, width: f32) -> (Self, Self) {
+        (
+            Self {
+                pos: self.pos,
+                size: [self.size[0] - width, self.size[1]],
+            },
+            Self {
+                pos: [self.pos[0] + self.size[0] - width, self.pos[1]],
+                size: [width, self.size[1]],
             },
         )
     }

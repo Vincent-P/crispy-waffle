@@ -712,14 +712,6 @@ impl App {
             }
         };
 
-        draw_area(
-            &mut self.ui,
-            &mut self.drawer,
-            content_rect,
-            ColorU32::from_f32(0.53, 0.13, 0.13, 1.0),
-            Some(&format!("CONTENT: frame {}", self.renderer.i_frame)),
-        );
-
         self.docking.begin_docking(&self.ui, content_rect);
 
         if let Some(content1_rect) = self.docking.tab_view("Content 1") {
@@ -727,26 +719,20 @@ impl App {
                 &mut self.ui,
                 &mut self.drawer,
                 content1_rect,
-                ColorU32::from_f32(0.13, 0.53, 0.13, 1.0),
-                Some("Content number uno"),
+                ColorU32::from_f32(0.53, 0.13, 0.13, 1.0),
+                Some(&format!(
+                    "content number uno: frame {}",
+                    self.renderer.i_frame
+                )),
             );
         }
 
         if let Some(content2_rect) = self.docking.tab_view("Content 2") {
-            draw_area(
-                &mut self.ui,
-                &mut self.drawer,
-                content2_rect,
-                ColorU32::from_f32(0.13, 0.13, 0.53, 1.0),
-                Some("Content number dos"),
-            );
-        }
-
-        self.docking.end_docking(&mut self.ui, &mut self.drawer);
-
-        if false {
-            let mut cursor = content_rect.pos;
+            let mut cursor = content2_rect.pos;
             cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
+
+            self.drawer
+                .draw_colored_rect(content2_rect, 0, ColorU32::greyscale(0x48));
 
             self.drawer.draw_label(
                 &self.ui.theme.face(),
@@ -787,6 +773,8 @@ impl App {
             }
             cursor[1] += 3.0 * em;
         }
+
+        self.docking.end_docking(&mut self.ui, &mut self.drawer);
 
         // -- Footer
         let footer_label = format!(
