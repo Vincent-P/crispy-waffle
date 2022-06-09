@@ -8,171 +8,39 @@ use swash::shape::ShapeContext;
 #[repr(C, packed)]
 pub struct ColorU32(pub u32);
 
-impl ColorU32 {
-    pub fn from_u8(r: u8, g: u8, b: u8, a: u8) -> Self {
-        let r = r as u32;
-        let g = g as u32;
-        let b = b as u32;
-        let a = a as u32;
-        Self((((((a << 8) | b) << 8) | g) << 8) | r)
-    }
-
-    pub fn from_f32(r: f32, g: f32, b: f32, a: f32) -> Self {
-        let r = (r * 255.0) as u8;
-        let g = (g * 255.0) as u8;
-        let b = (b * 255.0) as u8;
-        let a = (a * 255.0) as u8;
-        Self::from_u8(r, g, b, a)
-    }
-
-    pub fn red() -> Self {
-        Self::from_f32(1.0, 0.0, 0.0, 1.0)
-    }
-
-    pub fn green() -> Self {
-        Self::from_f32(0.0, 1.0, 0.0, 1.0)
-    }
-
-    pub fn blue() -> Self {
-        Self::from_f32(0.0, 0.0, 1.0, 1.0)
-    }
-
-    pub fn cyan() -> Self {
-        Self::from_f32(0.0, 1.0, 1.0, 1.0)
-    }
-
-    pub fn magenta() -> Self {
-        Self::from_f32(1.0, 0.0, 1.0, 1.0)
-    }
-
-    pub fn yellow() -> Self {
-        Self::from_f32(1.0, 1.0, 0.0, 1.0)
-    }
-
-    pub fn greyscale(intensity: u8) -> Self {
-        Self::from_u8(intensity, intensity, intensity, 255)
-    }
-
-    pub fn r(self) -> u32 {
-        self.0 & 0x000000FF
-    }
-    pub fn g(self) -> u32 {
-        self.0 & 0x0000FF00
-    }
-    pub fn b(self) -> u32 {
-        self.0 & 0x00FF0000
-    }
-    pub fn a(self) -> u32 {
-        self.0 & 0xFF000000
-    }
-
-    pub fn r_f32(self) -> f32 {
-        (self.r() as f32) / 255.0
-    }
-    pub fn g_f32(self) -> f32 {
-        (self.g() as f32) / 255.0
-    }
-    pub fn b_f32(self) -> f32 {
-        (self.b() as f32) / 255.0
-    }
-    pub fn a_f32(self) -> f32 {
-        (self.a() as f32) / 255.0
-    }
-}
-
+#[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub struct ColoredRect {
     pub rect: Rect,
     pub color: ColorU32,
     pub i_clip_rect: u32,
-    pub padding: [u32; 2],
+    pub border_radius: f32,
+    pub padding: u32,
 }
 
+#[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub struct TexturedRect {
     pub rect: Rect,
     pub uv: Rect,
     pub texture_descriptor: u32,
     pub i_clip_rect: u32,
-    pub padding: [u32; 2],
+    pub border_radius: f32,
+    pub padding: u32,
 }
 
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub enum PrimitiveType {
     ColorRect = 0,
     TexturedRect = 1,
     Clip = 2,
-    SdfRoundRectangle = 0b100000,
-    SdfCircle = 0b100001,
+    SdfCircle = 0b100000,
 }
 
-// 0b11000000_00000000_00000000_00000000
-const CRNR_MAX: u32 = 0b0011;
-const CRNR_OFFSET: u32 = 30;
-const CRNR_MASK: u32 = CRNR_MAX << CRNR_OFFSET;
-
-// 0b00111111_00000000_00000000_00000000
-const TYPE_MAX: u32 = 0b0011_1111;
-const TYPE_OFFSET: u32 = 24;
-const TYPE_MASK: u32 = TYPE_MAX << TYPE_OFFSET;
-
-// 0b00000000_11111111_11111111_11111111
-const INDX_MAX: u32 = 0b1111_1111_1111_1111_1111_1111;
-const INDX_OFFSET: u32 = 0;
-const INDX_MASK: u32 = INDX_MAX << INDX_OFFSET;
-
+#[derive(Clone, Copy)]
 #[repr(C, packed)]
 pub struct PrimitiveIndex(u32);
-
-// Bitfields
-impl Default for PrimitiveIndex {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl PrimitiveIndex {
-    pub fn new() -> Self {
-        Self(0)
-    }
-
-    pub fn get_corner(&self) -> u32 {
-        (self.0 & CRNR_MASK) >> CRNR_OFFSET
-    }
-
-    pub fn corner(self, i_corner: u32) -> Self {
-        assert!(i_corner <= CRNR_MAX);
-        let mut bits = self.0;
-        bits &= !CRNR_MASK;
-        bits |= i_corner << CRNR_OFFSET;
-        PrimitiveIndex(bits)
-    }
-
-    pub fn get_i_type(&self) -> u32 {
-        (self.0 & TYPE_MASK) >> TYPE_OFFSET
-    }
-
-    pub fn i_type(self, i_type: PrimitiveType) -> Self {
-        let i_type = i_type as u32;
-        assert!(i_type <= TYPE_MAX);
-        let mut bits = self.0;
-        bits &= !TYPE_MASK;
-        bits |= i_type << TYPE_OFFSET;
-        PrimitiveIndex(bits)
-    }
-
-    pub fn get_index(&self) -> u32 {
-        (self.0 & INDX_MASK) >> INDX_OFFSET
-    }
-
-    pub fn index(self, index: usize) -> Self {
-        assert!((index as u32) <= INDX_MAX);
-        let mut bits = self.0;
-        bits &= !INDX_MASK;
-        bits |= (index as u32) << INDX_OFFSET;
-        PrimitiveIndex(bits)
-    }
-}
 
 pub struct TextGlyph {
     placement: swash::zeno::Placement,
@@ -250,76 +118,23 @@ impl<'a> Drawer<'a> {
         &mut self.glyph_cache
     }
 
-    pub fn draw_colored_rect_no_anchors(&mut self, rect: Rect, i_clip_rect: u32, color: ColorU32) {
+    pub fn draw_colored_rect(&mut self, rect: ColoredRect) {
         Self::draw_colored_rects_impl(
             &mut self.vertex_byte_offset,
             self.vertex_buffer,
             &mut self.index_offset,
             self.index_buffer,
-            &[(rect, i_clip_rect, color)],
+            &[rect],
         )
     }
 
-    pub fn draw_colored_rect(&mut self, rect: Rect, i_clip_rect: u32, color: ColorU32) {
-        const ANCHOR_SIZE: f32 = 6.0;
-        let anchor_color = ColorU32::green();
-        let anchor_top = Rect {
-            pos: [
-                rect.pos[0] + 0.5 * rect.size[0] - 0.5 * ANCHOR_SIZE,
-                rect.pos[1] - 0.5 * ANCHOR_SIZE,
-            ],
-            size: [ANCHOR_SIZE, ANCHOR_SIZE],
-        };
-        let anchor_bottom = Rect {
-            pos: [
-                rect.pos[0] + 0.5 * rect.size[0] - 0.5 * ANCHOR_SIZE,
-                rect.pos[1] + rect.size[1] - 0.5 * ANCHOR_SIZE,
-            ],
-            size: [ANCHOR_SIZE, ANCHOR_SIZE],
-        };
-        let anchor_left = Rect {
-            pos: [
-                rect.pos[0] - 0.5 * ANCHOR_SIZE,
-                rect.pos[1] + 0.5 * rect.size[1] - 0.5 * ANCHOR_SIZE,
-            ],
-            size: [ANCHOR_SIZE, ANCHOR_SIZE],
-        };
-        let anchor_right = Rect {
-            pos: [
-                rect.pos[0] + rect.size[0] - 0.5 * ANCHOR_SIZE,
-                rect.pos[1] + 0.5 * rect.size[1] - 0.5 * ANCHOR_SIZE,
-            ],
-            size: [ANCHOR_SIZE, ANCHOR_SIZE],
-        };
-
-        Self::draw_colored_rects_impl(
-            &mut self.vertex_byte_offset,
-            self.vertex_buffer,
-            &mut self.index_offset,
-            self.index_buffer,
-            &[
-                (rect, i_clip_rect, color),
-                (anchor_top, i_clip_rect, anchor_color),
-                (anchor_bottom, i_clip_rect, anchor_color),
-                (anchor_left, i_clip_rect, anchor_color),
-                (anchor_right, i_clip_rect, anchor_color),
-            ],
-        )
-    }
-
-    pub fn draw_textured_rect(
-        &mut self,
-        rect: Rect,
-        uv: Rect,
-        i_clip_rect: u32,
-        texture_descriptor: u32,
-    ) {
+    pub fn draw_textured_rect(&mut self, rect: TexturedRect) {
         Self::draw_textured_rects_impl(
             &mut self.vertex_byte_offset,
             self.vertex_buffer,
             &mut self.index_offset,
             self.index_buffer,
-            &[(rect, uv, i_clip_rect, texture_descriptor)],
+            &[rect],
         )
     }
 
@@ -412,38 +227,6 @@ impl<'a> Drawer<'a> {
         let text_layout = Self::layout_text(&text_run, None);
 
         let centered_text = Rect::center(rect, text_layout.size);
-
-        let ascent = Rect {
-            pos: [centered_text.pos[0], centered_text.pos[1]],
-            size: [centered_text.size[0], 1.0],
-        };
-        let baseline = Rect {
-            pos: [
-                centered_text.pos[0],
-                centered_text.pos[1] + text_run.metrics.ascent,
-            ],
-            size: [centered_text.size[0], 1.0],
-        };
-        let descent = Rect {
-            pos: [
-                centered_text.pos[0],
-                centered_text.pos[1] + text_run.metrics.ascent + text_run.metrics.descent,
-            ],
-            size: [centered_text.size[0], 1.0],
-        };
-
-        Self::draw_colored_rects_impl(
-            &mut self.vertex_byte_offset,
-            self.vertex_buffer,
-            &mut self.index_offset,
-            self.index_buffer,
-            &[
-                (ascent, i_clip_rect, ColorU32::magenta()),
-                (baseline, i_clip_rect, ColorU32::magenta()),
-                (descent, i_clip_rect, ColorU32::magenta()),
-            ],
-        );
-
         self.draw_text_run(&text_run, &text_layout, centered_text.pos, i_clip_rect);
     }
 
@@ -479,7 +262,12 @@ impl<'a> Drawer<'a> {
                         ],
                     };
 
-                    rects.push((rect, glyph_uv, i_clip_rect, self.glyph_atlas_descriptor));
+                    rects.push(
+                        TexturedRect::new(rect)
+                            .uv(glyph_uv)
+                            .i_clip_rect(i_clip_rect)
+                            .texture_descriptor(self.glyph_atlas_descriptor),
+                    );
                 }
                 i_glyph += 1;
             }
@@ -539,7 +327,7 @@ impl<'a> Drawer<'a> {
         index_offset: &mut usize,
         index_buffer: &mut [u32],
         // position, uv, i_clip_rect, texture_descriptor
-        rects: &[(Rect, Rect, u32, u32)],
+        rects: &[TexturedRect],
     ) {
         let i_first_rect = Self::begin_primitive::<TexturedRect>(vertex_byte_offset);
         let vertices = Self::get_primitive_slice::<TexturedRect>(
@@ -550,14 +338,8 @@ impl<'a> Drawer<'a> {
         let indices = Self::get_index_slice(index_buffer, *index_offset);
 
         const CORNERS: [u32; 6] = [0, 1, 2, 0, 2, 3];
-        for (i_rect, &(rect, uv, i_clip_rect, texture_descriptor)) in rects.iter().enumerate() {
-            vertices[i_rect] = TexturedRect {
-                rect,
-                uv,
-                texture_descriptor,
-                i_clip_rect,
-                padding: [0, 0],
-            };
+        for (i_rect, textured_rect) in rects.iter().enumerate() {
+            vertices[i_rect] = *textured_rect;
 
             for i_corner in 0..CORNERS.len() {
                 indices[i_rect * CORNERS.len() + i_corner] = PrimitiveIndex::new()
@@ -577,7 +359,7 @@ impl<'a> Drawer<'a> {
         index_offset: &mut usize,
         index_buffer: &mut [u32],
         // position, uv, i_clip_rect, texture_descriptor
-        rects: &[(Rect, u32, ColorU32)],
+        rects: &[ColoredRect],
     ) {
         let i_first_rect = Self::begin_primitive::<ColoredRect>(vertex_byte_offset);
         let vertices = Self::get_primitive_slice::<ColoredRect>(
@@ -588,13 +370,8 @@ impl<'a> Drawer<'a> {
         let indices = Self::get_index_slice(index_buffer, *index_offset);
 
         const CORNERS: [u32; 6] = [0, 1, 2, 0, 2, 3];
-        for (i_rect, &(rect, i_clip_rect, color)) in rects.iter().enumerate() {
-            vertices[i_rect] = ColoredRect {
-                rect,
-                i_clip_rect,
-                color,
-                padding: [0, 0],
-            };
+        for (i_rect, colored_rect) in rects.iter().enumerate() {
+            vertices[i_rect] = *colored_rect;
 
             for i_corner in 0..CORNERS.len() {
                 indices[i_rect * CORNERS.len() + i_corner] = PrimitiveIndex::new()
@@ -618,5 +395,208 @@ impl TextRun {
 impl TextLayout {
     pub fn size(&self) -> [f32; 2] {
         self.size
+    }
+}
+
+impl ColorU32 {
+    pub fn from_u8(r: u8, g: u8, b: u8, a: u8) -> Self {
+        let r = r as u32;
+        let g = g as u32;
+        let b = b as u32;
+        let a = a as u32;
+        Self((((((a << 8) | b) << 8) | g) << 8) | r)
+    }
+
+    pub fn from_f32(r: f32, g: f32, b: f32, a: f32) -> Self {
+        let r = (r * 255.0) as u8;
+        let g = (g * 255.0) as u8;
+        let b = (b * 255.0) as u8;
+        let a = (a * 255.0) as u8;
+        Self::from_u8(r, g, b, a)
+    }
+
+    pub fn red() -> Self {
+        Self::from_f32(1.0, 0.0, 0.0, 1.0)
+    }
+
+    pub fn green() -> Self {
+        Self::from_f32(0.0, 1.0, 0.0, 1.0)
+    }
+
+    pub fn blue() -> Self {
+        Self::from_f32(0.0, 0.0, 1.0, 1.0)
+    }
+
+    pub fn cyan() -> Self {
+        Self::from_f32(0.0, 1.0, 1.0, 1.0)
+    }
+
+    pub fn magenta() -> Self {
+        Self::from_f32(1.0, 0.0, 1.0, 1.0)
+    }
+
+    pub fn yellow() -> Self {
+        Self::from_f32(1.0, 1.0, 0.0, 1.0)
+    }
+
+    pub fn greyscale(intensity: u8) -> Self {
+        Self::from_u8(intensity, intensity, intensity, 255)
+    }
+
+    pub fn r(self) -> u32 {
+        self.0 & 0x000000FF
+    }
+    pub fn g(self) -> u32 {
+        self.0 & 0x0000FF00
+    }
+    pub fn b(self) -> u32 {
+        self.0 & 0x00FF0000
+    }
+    pub fn a(self) -> u32 {
+        self.0 & 0xFF000000
+    }
+
+    pub fn r_f32(self) -> f32 {
+        (self.r() as f32) / 255.0
+    }
+    pub fn g_f32(self) -> f32 {
+        (self.g() as f32) / 255.0
+    }
+    pub fn b_f32(self) -> f32 {
+        (self.b() as f32) / 255.0
+    }
+    pub fn a_f32(self) -> f32 {
+        (self.a() as f32) / 255.0
+    }
+}
+
+// 0b11000000_00000000_00000000_00000000
+const CRNR_MAX: u32 = 0b0011;
+const CRNR_OFFSET: u32 = 30;
+const CRNR_MASK: u32 = CRNR_MAX << CRNR_OFFSET;
+
+// 0b00111111_00000000_00000000_00000000
+const TYPE_MAX: u32 = 0b0011_1111;
+const TYPE_OFFSET: u32 = 24;
+const TYPE_MASK: u32 = TYPE_MAX << TYPE_OFFSET;
+
+// 0b00000000_11111111_11111111_11111111
+const INDX_MAX: u32 = 0b1111_1111_1111_1111_1111_1111;
+const INDX_OFFSET: u32 = 0;
+const INDX_MASK: u32 = INDX_MAX << INDX_OFFSET;
+
+// Bitfields
+impl Default for PrimitiveIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PrimitiveIndex {
+    pub fn new() -> Self {
+        Self(0)
+    }
+
+    pub fn get_corner(&self) -> u32 {
+        (self.0 & CRNR_MASK) >> CRNR_OFFSET
+    }
+
+    pub fn corner(self, i_corner: u32) -> Self {
+        assert!(i_corner <= CRNR_MAX);
+        let mut bits = self.0;
+        bits &= !CRNR_MASK;
+        bits |= i_corner << CRNR_OFFSET;
+        PrimitiveIndex(bits)
+    }
+
+    pub fn get_i_type(&self) -> u32 {
+        (self.0 & TYPE_MASK) >> TYPE_OFFSET
+    }
+
+    pub fn i_type(self, i_type: PrimitiveType) -> Self {
+        let i_type = i_type as u32;
+        assert!(i_type <= TYPE_MAX);
+        let mut bits = self.0;
+        bits &= !TYPE_MASK;
+        bits |= i_type << TYPE_OFFSET;
+        PrimitiveIndex(bits)
+    }
+
+    pub fn get_index(&self) -> u32 {
+        (self.0 & INDX_MASK) >> INDX_OFFSET
+    }
+
+    pub fn index(self, index: usize) -> Self {
+        assert!((index as u32) <= INDX_MAX);
+        let mut bits = self.0;
+        bits &= !INDX_MASK;
+        bits |= (index as u32) << INDX_OFFSET;
+        PrimitiveIndex(bits)
+    }
+}
+
+// I hate Rust.
+impl ColoredRect {
+    pub fn new(rect: Rect) -> Self {
+        Self {
+            rect,
+            color: ColorU32::magenta(),
+            i_clip_rect: !0u32,
+            border_radius: 0.0,
+            padding: 0,
+        }
+    }
+
+    pub fn rect(mut self, rect: Rect) -> Self {
+        self.rect = rect;
+        self
+    }
+
+    pub fn color(mut self, color: ColorU32) -> Self {
+        self.color = color;
+        self
+    }
+    pub fn i_clip_rect(mut self, i_clip_rect: u32) -> Self {
+        self.i_clip_rect = i_clip_rect;
+        self
+    }
+
+    pub fn border_radius(mut self, border_radius: f32) -> Self {
+        self.border_radius = border_radius;
+        self
+    }
+}
+
+// I hate Rust.
+impl TexturedRect {
+    pub fn new(rect: Rect) -> Self {
+        Self {
+            rect,
+            uv: Rect::default(),
+            texture_descriptor: !0u32,
+            i_clip_rect: !0u32,
+            border_radius: 0.0,
+            padding: 0,
+        }
+    }
+
+    pub fn uv(mut self, uv: Rect) -> Self {
+        self.uv = uv;
+        self
+    }
+
+    pub fn texture_descriptor(mut self, texture_descriptor: u32) -> Self {
+        self.texture_descriptor = texture_descriptor;
+        self
+    }
+
+    pub fn i_clip_rect(mut self, i_clip_rect: u32) -> Self {
+        self.i_clip_rect = i_clip_rect;
+        self
+    }
+
+    pub fn border_radius(mut self, border_radius: f32) -> Self {
+        self.border_radius = border_radius;
+        self
     }
 }

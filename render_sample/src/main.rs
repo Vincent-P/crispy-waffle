@@ -134,7 +134,9 @@ mod custom_ui {
                 widget.rect.pos[1] + widget.rect.size[1],
             ];
 
-            drawer.draw_colored_rect(widget.rect, 0, ColorU32::from_f32(0.0, 0.0, 0.0, 0.5));
+            drawer.draw_colored_rect(
+                ColoredRect::new(widget.rect).color(ColorU32::from_f32(0.0, 0.0, 0.0, 0.5)),
+            );
             ui.state.add_rect_to_last_container(widget.rect);
 
             for dt in widget.histogram.frame_times {
@@ -162,7 +164,7 @@ mod custom_ui {
                     pos: [cursor[0].ceil(), (cursor[1] - rect_height).ceil()],
                     size: [rect_width, rect_height],
                 };
-                drawer.draw_colored_rect_no_anchors(rect, 0, rect_color);
+                drawer.draw_colored_rect(ColoredRect::new(rect).color(rect_color));
                 ui.state.add_rect_to_last_container(rect);
             }
         }
@@ -641,40 +643,38 @@ impl App {
     pub fn draw_menubar(&mut self, fullscreen: Rect) -> (Rect, Rect) {
         let em = self.ui.em();
         let menubar_margins = [1.0 * em, 0.25 * em];
+
         let menubar_container = self.ui.begin_container();
 
         let (menubar_rect, content_rect) =
             fullscreen.split_top_pixels(menubar_container.rect().size[1]);
 
+        // Draw the background of the menubar
         self.drawer
-            .draw_colored_rect(menubar_rect, 0, ColorU32::greyscale(0xE8));
+            .draw_colored_rect(ColoredRect::new(menubar_rect).color(ColorU32::greyscale(0xE8)));
 
-        let (label_rect, menubar_rest_rect) = menubar_rect.split_left_pixels(8.0 * em);
-        let label_rect = label_rect.set_height(2.5 * em).margins(menubar_margins);
+        let mut cursor = menubar_rect.pos;
 
-        let button_container = self.ui.begin_container();
+        self.ui.state.add_rect_to_last_container(Rect {
+            pos: cursor,
+            size: [
+                8.0 * em + 2.0 * menubar_margins[0],
+                1.5 * em + 2.0 * menubar_margins[1],
+            ],
+        });
         self.ui.button(
             &mut self.drawer,
-            ui::Button {
-                label: "Open File",
-                rect: label_rect,
-                enabled: true,
-            },
+            ui::Button::with_label("Open File").rect(
+                Rect {
+                    pos: cursor,
+                    size: [8.0 * em, 1.5 * em],
+                }
+                .offset(menubar_margins),
+            ),
         );
-        self.ui.end_container();
+        cursor[0] += 8.0 * em;
 
-        let label_rect = label_rect.offset([
-            button_container.rect().size[0] + menubar_margins[0],
-            button_container.rect().size[1] + menubar_margins[1],
-        ]);
-        self.ui.button(
-            &mut self.drawer,
-            ui::Button {
-                label: "TEst",
-                rect: label_rect,
-                enabled: true,
-            },
-        );
+        cursor[0] += menubar_margins[0];
 
         self.ui.end_container();
 
@@ -703,11 +703,10 @@ impl App {
                          rect: Rect,
                          color: ColorU32,
                          label: Option<&str>| {
-            drawer.draw_colored_rect(rect, 0, color);
+            drawer.draw_colored_rect(ColoredRect::new(rect).color(color));
             drawer.draw_colored_rect(
-                rect.inset(1.0 * em),
-                0,
-                ColorU32::from_f32(0.25, 0.25, 0.25, 0.25),
+                ColoredRect::new(rect.inset(1.0 * em))
+                    .color(ColorU32::from_f32(0.25, 0.25, 0.25, 0.25)),
             );
 
             if let Some(label_str) = label {
@@ -733,14 +732,10 @@ impl App {
             cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
             if self.ui.button(
                 &mut self.drawer,
-                ui::Button {
-                    label: "Toggle show histogram",
-                    rect: Rect {
-                        pos: cursor,
-                        size: [20.0 * em, 1.5 * em],
-                    },
-                    enabled: true,
-                },
+                ui::Button::with_label("Toggle show histogram").rect(Rect {
+                    pos: cursor,
+                    size: [20.0 * em, 1.5 * em],
+                }),
             ) {
                 self.show_fps = !self.show_fps;
             }
@@ -751,8 +746,9 @@ impl App {
             let mut cursor = content2_rect.pos;
             cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
 
-            self.drawer
-                .draw_colored_rect(content2_rect, 0, ColorU32::greyscale(0x48));
+            self.drawer.draw_colored_rect(
+                ColoredRect::new(content2_rect).color(ColorU32::greyscale(0x48)),
+            );
 
             self.drawer.draw_label(
                 &self.ui.theme.face(),
@@ -767,14 +763,10 @@ impl App {
 
             if self.ui.button(
                 &mut self.drawer,
-                ui::Button {
-                    label: "Increase font size by 2",
-                    rect: Rect {
-                        pos: cursor,
-                        size: [20.0 * em, 1.5 * em],
-                    },
-                    enabled: true,
-                },
+                ui::Button::with_label("Increase font size by 2").rect(Rect {
+                    pos: cursor,
+                    size: [20.0 * em, 1.5 * em],
+                }),
             ) {
                 self.ui.theme.font_size += 2.0;
             }
@@ -782,14 +774,10 @@ impl App {
 
             if self.ui.button(
                 &mut self.drawer,
-                ui::Button {
-                    label: "Decrease font size by 2",
-                    rect: Rect {
-                        pos: cursor,
-                        size: [20.0 * em, 1.5 * em],
-                    },
-                    enabled: true,
-                },
+                ui::Button::with_label("Decrease font size by 2").rect(Rect {
+                    pos: cursor,
+                    size: [20.0 * em, 1.5 * em],
+                }),
             ) {
                 self.ui.theme.font_size -= 2.0;
             }

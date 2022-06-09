@@ -535,7 +535,7 @@ impl Docking {
             _ => ColorU32::from_f32(0.53, 0.53, 0.73, 1.0),
         };
 
-        drawer.draw_colored_rect(title_rect, 0, color);
+        drawer.draw_colored_rect(ColoredRect::new(title_rect).color(color));
 
         let (label_run, label_layout) =
             drawer.shape_and_layout_text(&ui.theme.face(), &tabview.title);
@@ -550,14 +550,7 @@ impl Docking {
 
         ui.state.add_rect_to_last_container(title_rect);
 
-        if ui.button(
-            drawer,
-            ui::Button {
-                label: "D",
-                rect: detach_rect,
-                enabled: true,
-            },
-        ) {
+        if ui.button(drawer, ui::Button::with_label("D").rect(detach_rect)) {
             res = TabState::ClickedDetach;
         }
 
@@ -610,7 +603,7 @@ impl Docking {
 
                 for (i_rect, rect) in rects.into_iter().enumerate() {
                     let overlay_color = ColorU32::from_f32(0.25, 0.01, 0.25, 0.25);
-                    drawer.draw_colored_rect(rect, 0, overlay_color);
+                    drawer.draw_colored_rect(ColoredRect::new(rect).color(overlay_color));
 
                     if ui.inputs.is_hovering(rect) && !ui.inputs.left_mouse_button_pressed {
                         docking_ui
@@ -629,7 +622,7 @@ impl Docking {
                 // Draw an overlay to dock tabs
                 let overlay_rect = container.rect.inset(2.0 * em);
                 let overlay_color = ColorU32::from_f32(0.25, 0.01, 0.25, 0.25);
-                drawer.draw_colored_rect(overlay_rect, 0, overlay_color);
+                drawer.draw_colored_rect(ColoredRect::new(overlay_rect).color(overlay_color));
 
                 if ui.inputs.is_hovering(overlay_rect) && !ui.inputs.left_mouse_button_pressed {
                     docking_ui
@@ -662,7 +655,9 @@ impl Docking {
                 let mut tabwell_rect = tabwell_rect;
 
                 // Draw the tabwell background
-                drawer.draw_colored_rect(tabwell_rect, 0, ColorU32::greyscale(0x38));
+                drawer.draw_colored_rect(
+                    ColoredRect::new(tabwell_rect).color(ColorU32::greyscale(0x38)),
+                );
 
                 // Draw each tab title
                 for (i, i_tabview) in container.tabviews.iter().enumerate() {
@@ -692,11 +687,9 @@ impl Docking {
                 let (rest_rect, split_h_rect) = tabwell_rect.split_right_pixels(1.5 * em);
                 if ui.button(
                     drawer,
-                    ui::Button {
-                        label: "H",
-                        rect: split_h_rect,
-                        enabled: parent_direction != Some(Direction::Horizontal),
-                    },
+                    ui::Button::with_label("H")
+                        .rect(split_h_rect)
+                        .enabled(parent_direction != Some(Direction::Horizontal)),
                 ) {
                     self.ui.dragging_events.push(DockingEvent::SplitContainer(
                         SplitContainerEvent {
@@ -709,11 +702,9 @@ impl Docking {
                 let (_rest_rect, split_v_rect) = rest_rect.split_right_pixels(1.5 * em);
                 if ui.button(
                     drawer,
-                    ui::Button {
-                        label: "V",
-                        rect: split_v_rect,
-                        enabled: parent_direction != Some(Direction::Vertical),
-                    },
+                    ui::Button::with_label("V")
+                        .rect(split_v_rect)
+                        .enabled(parent_direction != Some(Direction::Vertical)),
                 ) {
                     self.ui.dragging_events.push(DockingEvent::SplitContainer(
                         SplitContainerEvent {
@@ -728,11 +719,7 @@ impl Docking {
 
                     if ui.button(
                         drawer,
-                        ui::Button {
-                            label: "Close empty container",
-                            rect: close_rect,
-                            enabled: true,
-                        },
+                        ui::Button::with_label("Close empty container").rect(close_rect),
                     ) {
                         self.ui
                             .dragging_events
@@ -790,7 +777,9 @@ impl Docking {
                 pos: ui.mouse_position(),
                 size: [10.0 * em, 1.5 * em],
             };
-            drawer.draw_colored_rect(rect, 0, ColorU32::from_f32(0.0, 0.0, 0.0, 0.5));
+            drawer.draw_colored_rect(
+                ColoredRect::new(rect).color(ColorU32::from_f32(0.0, 0.0, 0.0, 0.5)),
+            );
 
             let (label_run, label_layout) =
                 drawer.shape_and_layout_text(&ui.theme.face(), &tabview.title);

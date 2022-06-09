@@ -121,3 +121,12 @@ impl Rect {
         }
     }
 }
+
+impl Default for Rect {
+    fn default() -> Self {
+        Self {
+            pos: [0.0, 0.0],
+            size: [0.0, 0.0],
+        }
+    }
+}

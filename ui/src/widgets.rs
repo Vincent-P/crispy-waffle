@@ -36,7 +36,7 @@ impl Ui {
             _ => self.theme.button_bg_color,
         };
 
-        drawer.draw_colored_rect(button_rect, 0, color);
+        drawer.draw_colored_rect(ColoredRect::new(button_rect).color(color));
 
         let (label_run, label_layout) =
             drawer.shape_and_layout_text(&self.theme.face(), button.label);
@@ -50,12 +50,35 @@ impl Ui {
         );
 
         if !button.enabled {
-            drawer.draw_colored_rect(button_rect, 0, ColorU32::from_f32(0.0, 0.0, 0.0, 0.25));
+            drawer.draw_colored_rect(
+                ColoredRect::new(button_rect).color(ColorU32::from_f32(0.0, 0.0, 0.0, 0.25)),
+            );
         }
 
         self.state.add_rect_to_last_container(button_rect);
 
         result
+    }
+}
+
+// I hate Rust.
+impl<'a> Button<'a> {
+    pub fn with_label(label: &'a str) -> Self {
+        Self {
+            label,
+            rect: Rect::default(),
+            enabled: true,
+        }
+    }
+
+    pub fn rect(mut self, rect: Rect) -> Self {
+        self.rect = rect;
+        self
+    }
+
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
     }
 }
 
@@ -99,7 +122,7 @@ impl Ui {
             _ => self.theme.button_bg_color,
         };
 
-        drawer.draw_colored_rect(input_rect, 0, color);
+        drawer.draw_colored_rect(ColoredRect::new(input_rect).color(color));
 
         self.state.add_rect_to_last_container(input_rect);
 
@@ -141,7 +164,7 @@ impl Ui {
             _ => self.theme.button_bg_color,
         };
 
-        drawer.draw_colored_rect(input_rect, 0, color);
+        drawer.draw_colored_rect(ColoredRect::new(input_rect).color(color));
 
         self.state.add_rect_to_last_container(input_rect);
 
