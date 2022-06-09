@@ -10,6 +10,18 @@ pub struct Theme {
     pub button_bg_color: ColorU32,
     pub button_pressed_bg_color: ColorU32,
     pub button_hover_bg_color: ColorU32,
+
+    pub button_fg_color: ColorU32,
+    pub button_pressed_fg_color: ColorU32,
+    pub button_hover_fg_color: ColorU32,
+
+    pub button_bg_outline_color: ColorU32,
+    pub button_pressed_bg_outline_color: ColorU32,
+    pub button_hover_bg_outline_color: ColorU32,
+
+    pub button_outline_width: f32,
+    pub button_border_radius: f32,
+
     pub font: Rc<Font>,
     pub font_size: f32,
 }
@@ -46,6 +58,7 @@ pub struct Container {
 impl Ui {
     // -- Main UI API
     pub fn new(font: Rc<Font>, font_size: f32) -> Self {
+        let em = font_size;
         Self {
             activation: Activation {
                 focused: None,
@@ -53,9 +66,21 @@ impl Ui {
                 gen: 0,
             },
             theme: Theme {
-                button_bg_color: ColorU32::from_f32(0.43, 0.23, 0.12, 1.0),
-                button_pressed_bg_color: ColorU32::from_f32(0.13, 0.23, 0.42, 1.0),
-                button_hover_bg_color: ColorU32::from_f32(0.23, 0.43, 0.12, 1.0),
+                button_bg_color: ColorU32::from_u8(0xFF, 0xFF, 0xFF, 0xFF),
+                button_pressed_bg_color: ColorU32::from_u8(0x43, 0xA0, 0x47, 0xFF),
+                button_hover_bg_color: ColorU32::from_u8(0xEA, 0xF6, 0xEC, 0xFF),
+
+                button_fg_color: ColorU32::from_u8(0x37, 0x83, 0x3B, 0xFF),
+                button_pressed_fg_color: ColorU32::from_u8(0xF5, 0xFA, 0xF5, 0xFF),
+                button_hover_fg_color: ColorU32::from_u8(0x37, 0x83, 0x3B, 0xFF),
+
+                button_bg_outline_color: ColorU32::from_u8(0xB9, 0xDB, 0xBA, 0xFF),
+                button_pressed_bg_outline_color: ColorU32::from_u8(0x43, 0xA0, 0x47, 0xFF),
+                button_hover_bg_outline_color: ColorU32::from_u8(0xEA, 0xF6, 0xEC, 0xFF),
+
+                button_outline_width: 2.0,
+                button_border_radius: 0.5 * em,
+
                 font,
                 font_size,
             },

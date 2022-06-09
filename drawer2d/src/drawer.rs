@@ -26,7 +26,7 @@ pub struct TexturedRect {
     pub texture_descriptor: u32,
     pub i_clip_rect: u32,
     pub border_radius: f32,
-    pub padding: u32,
+    pub base_color: ColorU32,
 }
 
 #[derive(Clone, Copy)]
@@ -222,12 +222,25 @@ impl<'a> Drawer<'a> {
         (text_run, text_layout)
     }
 
-    pub fn draw_label(&mut self, face: &Face, label: &str, rect: Rect, i_clip_rect: u32) {
+    pub fn draw_label(
+        &mut self,
+        face: &Face,
+        label: &str,
+        rect: Rect,
+        i_clip_rect: u32,
+        color: ColorU32,
+    ) {
         let text_run = self.shape_text(face, label);
         let text_layout = Self::layout_text(&text_run, None);
 
         let centered_text = Rect::center(rect, text_layout.size);
-        self.draw_text_run(&text_run, &text_layout, centered_text.pos, i_clip_rect);
+        self.draw_text_run(
+            &text_run,
+            &text_layout,
+            centered_text.pos,
+            i_clip_rect,
+            color,
+        );
     }
 
     pub fn draw_text_run(
@@ -236,6 +249,7 @@ impl<'a> Drawer<'a> {
         text_layout: &TextLayout,
         pos: [f32; 2],
         i_clip_rect: u32,
+        color: ColorU32,
     ) {
         let mut rects = Vec::new();
 
@@ -266,7 +280,8 @@ impl<'a> Drawer<'a> {
                         TexturedRect::new(rect)
                             .uv(glyph_uv)
                             .i_clip_rect(i_clip_rect)
-                            .texture_descriptor(self.glyph_atlas_descriptor),
+                            .texture_descriptor(self.glyph_atlas_descriptor)
+                            .base_color(color),
                     );
                 }
                 i_glyph += 1;
@@ -576,7 +591,7 @@ impl TexturedRect {
             texture_descriptor: !0u32,
             i_clip_rect: !0u32,
             border_radius: 0.0,
-            padding: 0,
+            base_color: ColorU32::greyscale(0xFF),
         }
     }
 
@@ -597,6 +612,11 @@ impl TexturedRect {
 
     pub fn border_radius(mut self, border_radius: f32) -> Self {
         self.border_radius = border_radius;
+        self
+    }
+
+    pub fn base_color(mut self, base_color: ColorU32) -> Self {
+        self.base_color = base_color;
         self
     }
 }

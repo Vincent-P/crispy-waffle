@@ -710,7 +710,13 @@ impl App {
             );
 
             if let Some(label_str) = label {
-                drawer.draw_label(&ui.theme.face(), label_str, rect, 0);
+                drawer.draw_label(
+                    &ui.theme.face(),
+                    label_str,
+                    rect,
+                    0,
+                    ColorU32::greyscale(0x00),
+                );
             }
         };
 
@@ -758,6 +764,7 @@ impl App {
                     size: [14.0 * em, 2.0 * em],
                 },
                 0,
+                ColorU32::greyscale(0x00),
             );
             cursor[1] += 3.0 * em;
 

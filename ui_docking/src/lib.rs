@@ -546,6 +546,7 @@ impl Docking {
             &label_layout,
             Rect::center(title_rect, label_size).pos,
             0,
+            ColorU32::greyscale(0xFF),
         );
 
         ui.state.add_rect_to_last_container(title_rect);
@@ -656,7 +657,17 @@ impl Docking {
 
                 // Draw the tabwell background
                 drawer.draw_colored_rect(
-                    ColoredRect::new(tabwell_rect).color(ColorU32::greyscale(0x38)),
+                    ColoredRect::new(tabwell_rect).color(ColorU32::greyscale(0x3A)),
+                );
+
+                // Draw a border between the tabwell and the content
+                let (tabwell_top_rect, border_rect) = tabwell_rect.split_bottom_pixels(0.2 * em);
+                drawer.draw_colored_rect(
+                    ColoredRect::new(tabwell_top_rect.split_top_pixels((0.1 * em).max(1.0)).0)
+                        .color(ColorU32::greyscale(0x2A)),
+                );
+                drawer.draw_colored_rect(
+                    ColoredRect::new(border_rect).color(ColorU32::greyscale(0x2A)),
                 );
 
                 // Draw each tab title
@@ -684,11 +695,11 @@ impl Docking {
                 }
 
                 // Draw the splits button
-                let (rest_rect, split_h_rect) = tabwell_rect.split_right_pixels(1.5 * em);
+                let (rest_rect, split_h_rect) = tabwell_top_rect.split_right_pixels(1.5 * em);
                 if ui.button(
                     drawer,
                     ui::Button::with_label("H")
-                        .rect(split_h_rect)
+                        .rect(split_h_rect.inset(0.1 * em))
                         .enabled(parent_direction != Some(Direction::Horizontal)),
                 ) {
                     self.ui.dragging_events.push(DockingEvent::SplitContainer(
@@ -703,7 +714,7 @@ impl Docking {
                 if ui.button(
                     drawer,
                     ui::Button::with_label("V")
-                        .rect(split_v_rect)
+                        .rect(split_v_rect.inset(0.1 * em))
                         .enabled(parent_direction != Some(Direction::Vertical)),
                 ) {
                     self.ui.dragging_events.push(DockingEvent::SplitContainer(
@@ -715,7 +726,12 @@ impl Docking {
                 }
 
                 if container.tabviews.is_empty() {
-                    let close_rect = content_rect.inset(5.0 * em);
+                    // Draw a background for the empty tab
+                    drawer.draw_colored_rect(
+                        ColoredRect::new(content_rect).color(ColorU32::greyscale(0x3A)),
+                    );
+
+                    let close_rect = Rect::center(content_rect, [12.0 * em, 2.0 * em]);
 
                     if ui.button(
                         drawer,
@@ -790,6 +806,7 @@ impl Docking {
                 &label_layout,
                 Rect::center(rect, label_size).pos,
                 0,
+                ColorU32::greyscale(0xFF),
             );
         }
     }
