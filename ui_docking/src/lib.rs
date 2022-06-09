@@ -7,6 +7,7 @@ pub struct Docking {
     root: Handle<Area>,
     default_area: Handle<Area>,
     tabviews: Vec<TabView>,
+    floating_containers: Vec<Handle<Area>>,
     ui: DockingUi,
 }
 
@@ -72,6 +73,7 @@ enum DockingEvent {
     MoveTabToSplit(MoveTabSplitEvent),
     SplitContainer(SplitContainerEvent),
     RemoveEmptyContainer(Handle<Area>),
+    DetachTab(usize),
 }
 
 struct DockingUi {
@@ -88,6 +90,7 @@ impl Docking {
             root: Handle::default(),
             default_area: Handle::default(),
             tabviews: Vec::new(),
+            floating_containers: Vec::new(),
             ui: DockingUi {
                 em_size: 0.0,
                 active_tab: None,
@@ -335,7 +338,14 @@ impl Docking {
             Area::Splitter(splitter) => Some(splitter.direction),
             Area::Container(_) => None,
         };
+
         self.draw_area_rec(ui, drawer, self.root, root_direction);
+
+        let floating_roots = self.floating_containers.clone();
+        for floating in floating_roots {
+            self.draw_area_rec(ui, drawer, floating, None);
+        }
+
         self.draw_docking(ui, drawer);
 
         for (area_handle, area) in self.area_tree.iter() {
@@ -344,7 +354,6 @@ impl Docking {
 
         // drop events
         for event in &self.ui.dragging_events {
-            dbg!(&event);
             match event {
                 DockingEvent::MoveTabToContainer(event) => {
                     let previous_area = self.tabviews[event.i_tabview].area;
@@ -457,6 +466,27 @@ impl Docking {
                         self.area_tree.remove(*container_handle);
                     }
                 }
+                DockingEvent::DetachTab(i_tabview) => {
+                    let container_handle = self.tabviews[*i_tabview].area;
+                    Self::remove_tabview(
+                        &mut self.area_tree,
+                        &mut self.tabviews,
+                        *i_tabview,
+                        container_handle,
+                    );
+
+                    let new_container = self.area_tree.add(Area::Container(AreaContainer {
+                        selected: Some(0),
+                        tabviews: vec![*i_tabview],
+                        rect: Rect {
+                            pos: [200.0, 200.0],
+                            size: [200.0, 200.0],
+                        },
+                    }));
+
+                    self.tabviews[*i_tabview].area = new_container;
+                    self.floating_containers.push(new_container);
+                }
             }
         }
         self.ui.dragging_events.clear();
@@ -464,6 +494,13 @@ impl Docking {
 }
 
 // -- Drawing
+enum TabState {
+    Dragging,
+    ClickedTitle,
+    ClickedDetach,
+    None,
+}
+
 impl Docking {
     // Draw a tab inside a tabwell
     fn draw_tab(
@@ -471,23 +508,25 @@ impl Docking {
         drawer: &mut Drawer,
         docking_ui: &mut DockingUi,
         tabview: &TabView,
-        i_tabview: usize,
-        area: &mut AreaContainer,
         rect: Rect,
-    ) {
+    ) -> TabState {
+        let mut res = TabState::None;
+        let em = docking_ui.em_size;
         let id = ui.activation.make_id();
 
-        if ui.inputs.is_hovering(rect) {
+        let (title_rect, detach_rect) = rect.split_right_pixels(1.5 * em);
+
+        if ui.inputs.is_hovering(title_rect) {
             ui.activation.focused = Some(id);
             if ui.activation.active == None && ui.inputs.left_mouse_button_pressed {
                 ui.activation.active = Some(id);
             }
         } else if ui.activation.active == Some(id) {
-            docking_ui.active_tab = Some(area.tabviews[i_tabview]);
+            res = TabState::Dragging;
         }
 
         if ui.has_clicked(id) {
-            area.selected = Some(i_tabview);
+            res = TabState::ClickedTitle;
         }
 
         let color = match (ui.activation.focused, ui.activation.active) {
@@ -496,7 +535,7 @@ impl Docking {
             _ => ColorU32::from_f32(0.53, 0.53, 0.73, 1.0),
         };
 
-        drawer.draw_colored_rect(rect, 0, color);
+        drawer.draw_colored_rect(title_rect, 0, color);
 
         let (label_run, label_layout) =
             drawer.shape_and_layout_text(&ui.theme.face(), &tabview.title);
@@ -505,11 +544,24 @@ impl Docking {
         drawer.draw_text_run(
             &label_run,
             &label_layout,
-            Rect::center(rect, label_size).pos,
+            Rect::center(title_rect, label_size).pos,
             0,
         );
 
-        ui.state.add_rect_to_last_container(rect);
+        ui.state.add_rect_to_last_container(title_rect);
+
+        if ui.button(
+            drawer,
+            ui::Button {
+                label: "D",
+                rect: detach_rect,
+                enabled: true,
+            },
+        ) {
+            res = TabState::ClickedDetach;
+        }
+
+        res
     }
 
     // Draw the overlay and docking controls above a container
@@ -613,22 +665,27 @@ impl Docking {
                 drawer.draw_colored_rect(tabwell_rect, 0, ColorU32::greyscale(0x38));
 
                 // Draw each tab title
-                for i_tabview in 0..container.tabviews.len() {
-                    let tabview = &self.tabviews[container.tabviews[i_tabview]];
+                for (i, i_tabview) in container.tabviews.iter().enumerate() {
+                    let tabview = &self.tabviews[*i_tabview];
 
                     let (tab_rect, rest_rect) =
-                        tabwell_rect.split_left_pixels((tabview.title.len() as f32) * 0.75 * em);
+                        tabwell_rect.split_left_pixels((tabview.title.len() as f32) * em);
                     tabwell_rect = rest_rect;
 
-                    Self::draw_tab(
-                        ui,
-                        drawer,
-                        &mut self.ui,
-                        tabview,
-                        i_tabview,
-                        container,
-                        tab_rect,
-                    );
+                    let tabstate = Self::draw_tab(ui, drawer, &mut self.ui, tabview, tab_rect);
+                    match tabstate {
+                        TabState::Dragging => {
+                            self.ui.active_tab = Some(*i_tabview);
+                        }
+                        TabState::ClickedTitle => {
+                            container.selected = Some(i);
+                        }
+                        TabState::ClickedDetach => self
+                            .ui
+                            .dragging_events
+                            .push(DockingEvent::DetachTab(*i_tabview)),
+                        _ => {}
+                    }
                 }
 
                 // Draw the splits button
