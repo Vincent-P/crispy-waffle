@@ -9,14 +9,11 @@ pub struct Button<'a> {
 impl Ui {
     pub fn button(&mut self, drawer: &mut Drawer, button: Button) -> bool {
         let mut result = false;
-        let id = self.activation.make_id();
-
-        let button_rect = button.rect;
 
         // -- Interactions
-
+        let id = self.activation.make_id();
         if button.enabled {
-            if self.inputs.is_hovering(button_rect) {
+            if self.inputs.is_hovering(button.rect) {
                 self.activation.focused = Some(id);
                 if self.activation.active == None && self.inputs.left_mouse_button_pressed {
                     self.activation.active = Some(id);
@@ -44,13 +41,13 @@ impl Ui {
         };
 
         drawer.draw_colored_rect(
-            ColoredRect::new(button_rect)
+            ColoredRect::new(button.rect)
                 .color(outline_color)
                 .border_radius(0.33 * em),
         );
 
         drawer.draw_colored_rect(
-            ColoredRect::new(button_rect.inset(self.theme.button_outline_width))
+            ColoredRect::new(button.rect.inset(self.theme.button_outline_width))
                 .color(bg_color)
                 .border_radius(0.33 * em),
         );
@@ -67,20 +64,20 @@ impl Ui {
         drawer.draw_text_run(
             &label_run,
             &label_layout,
-            Rect::center(button_rect, label_size).pos,
+            Rect::center(button.rect, label_size).pos,
             0,
             fg_color,
         );
 
         if !button.enabled {
             drawer.draw_colored_rect(
-                ColoredRect::new(button_rect)
+                ColoredRect::new(button.rect)
                     .color(ColorU32::from_f32(0.0, 0.0, 0.0, 0.25))
                     .border_radius(0.33 * em),
             );
         }
 
-        self.state.add_rect_to_last_container(button_rect);
+        self.state.add_rect_to_last_container(button.rect);
 
         result
     }
@@ -114,7 +111,6 @@ pub struct Splitter {
 impl Ui {
     pub fn splitter_x(&mut self, drawer: &mut Drawer, splitter: Splitter, value: &mut f32) -> bool {
         let mut result = false;
-        let id = self.activation.make_id();
 
         let input_width = 10.0;
         let input_rect = Rect {
@@ -126,7 +122,7 @@ impl Ui {
         };
 
         // -- Interactions
-
+        let id = self.activation.make_id();
         if self.inputs.is_hovering(input_rect) {
             self.activation.focused = Some(id);
             if self.activation.active == None && self.inputs.left_mouse_button_pressed {
@@ -156,7 +152,6 @@ impl Ui {
 
     pub fn splitter_y(&mut self, drawer: &mut Drawer, splitter: Splitter, value: &mut f32) -> bool {
         let mut result = false;
-        let id = self.activation.make_id();
 
         let input_width = 10.0;
         let input_rect = Rect {
@@ -168,7 +163,7 @@ impl Ui {
         };
 
         // -- Interactions
-
+        let id = self.activation.make_id();
         if self.inputs.is_hovering(input_rect) {
             self.activation.focused = Some(id);
             if self.activation.active == None && self.inputs.left_mouse_button_pressed {
@@ -192,6 +187,91 @@ impl Ui {
         drawer.draw_colored_rect(ColoredRect::new(input_rect).color(color));
 
         self.state.add_rect_to_last_container(input_rect);
+
+        result
+    }
+}
+
+pub struct RectButton<'a> {
+    pub label: &'a str,
+}
+
+impl Ui {
+    pub fn rectbutton(
+        &mut self,
+        drawer: &mut Drawer,
+        rectsplit: &mut RectSplit,
+        button: RectButton,
+    ) -> bool {
+        let mut result = false;
+
+        // -- Layout
+        let (label_run, label_layout) =
+            drawer.shape_and_layout_text(&self.theme.face(), button.label);
+        let label_size = label_layout.size();
+        let cutsize = if rectsplit.direction.is_horizontal() {
+            label_size[0]
+        } else {
+            label_size[1]
+        };
+
+        let button_rect = rectsplit.split(cutsize);
+
+        // -- Interactions
+        let id = self.activation.make_id();
+
+        if self.inputs.is_hovering(button_rect) {
+            self.activation.focused = Some(id);
+            if self.activation.active == None && self.inputs.left_mouse_button_pressed {
+                self.activation.active = Some(id);
+            }
+        }
+
+        if self.has_clicked(id) {
+            result = true;
+        }
+
+        // -- Drawing
+        let em = self.theme.font_size;
+
+        let bg_color = match (self.activation.focused, self.activation.active) {
+            (Some(f), Some(a)) if f == id && a == id => self.theme.button_pressed_bg_color,
+            (Some(f), _) if f == id => self.theme.button_hover_bg_color,
+            _ => self.theme.button_bg_color,
+        };
+
+        let outline_color = match (self.activation.focused, self.activation.active) {
+            (Some(f), Some(a)) if f == id && a == id => self.theme.button_pressed_bg_outline_color,
+            (Some(f), _) if f == id => self.theme.button_hover_bg_outline_color,
+            _ => self.theme.button_bg_outline_color,
+        };
+
+        drawer.draw_colored_rect(
+            ColoredRect::new(button_rect)
+                .color(outline_color)
+                .border_radius(0.33 * em),
+        );
+
+        drawer.draw_colored_rect(
+            ColoredRect::new(button_rect.inset(self.theme.button_outline_width))
+                .color(bg_color)
+                .border_radius(0.33 * em),
+        );
+
+        let fg_color = match (self.activation.focused, self.activation.active) {
+            (Some(f), Some(a)) if f == id && a == id => self.theme.button_pressed_fg_color,
+            (Some(f), _) if f == id => self.theme.button_hover_fg_color,
+            _ => self.theme.button_fg_color,
+        };
+        drawer.draw_text_run(
+            &label_run,
+            &label_layout,
+            Rect::center(button_rect, label_size).pos,
+            0,
+            fg_color,
+        );
+
+        self.state.add_rect_to_last_container(button_rect);
 
         result
     }

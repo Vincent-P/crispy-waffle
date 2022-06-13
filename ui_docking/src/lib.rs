@@ -514,7 +514,8 @@ impl Docking {
         let em = docking_ui.em_size;
         let id = ui.activation.make_id();
 
-        let (title_rect, detach_rect) = rect.split_right_pixels(1.5 * em);
+        let mut title_rect = rect;
+        let detach_rect = title_rect.split_right(1.5 * em);
 
         if ui.inputs.is_hovering(title_rect) {
             ui.activation.focused = Some(id);
@@ -661,22 +662,20 @@ impl Docking {
                 );
 
                 // Draw a border between the tabwell and the content
-                let (tabwell_top_rect, border_rect) = tabwell_rect.split_bottom_pixels(0.2 * em);
+                let top_border_rect = tabwell_rect.split_top((0.1 * em).max(1.0));
+                let bottom_border_rect = tabwell_rect.split_bottom(0.2 * em);
                 drawer.draw_colored_rect(
-                    ColoredRect::new(tabwell_top_rect.split_top_pixels((0.1 * em).max(1.0)).0)
-                        .color(ColorU32::greyscale(0x2A)),
+                    ColoredRect::new(top_border_rect).color(ColorU32::greyscale(0x2A)),
                 );
                 drawer.draw_colored_rect(
-                    ColoredRect::new(border_rect).color(ColorU32::greyscale(0x2A)),
+                    ColoredRect::new(bottom_border_rect).color(ColorU32::greyscale(0x2A)),
                 );
 
                 // Draw each tab title
                 for (i, i_tabview) in container.tabviews.iter().enumerate() {
                     let tabview = &self.tabviews[*i_tabview];
 
-                    let (tab_rect, rest_rect) =
-                        tabwell_rect.split_left_pixels((tabview.title.len() as f32) * em);
-                    tabwell_rect = rest_rect;
+                    let tab_rect = tabwell_rect.split_left((tabview.title.len() as f32) * em);
 
                     let tabstate = Self::draw_tab(ui, drawer, &mut self.ui, tabview, tab_rect);
                     match tabstate {
@@ -695,7 +694,7 @@ impl Docking {
                 }
 
                 // Draw the splits button
-                let (rest_rect, split_h_rect) = tabwell_top_rect.split_right_pixels(1.5 * em);
+                let split_h_rect = tabwell_rect.split_right(1.5 * em);
                 if ui.button(
                     drawer,
                     ui::Button::with_label("H")
@@ -710,7 +709,7 @@ impl Docking {
                     ));
                 }
 
-                let (_rest_rect, split_v_rect) = rest_rect.split_right_pixels(1.5 * em);
+                let split_v_rect = tabwell_rect.split_right(1.5 * em);
                 if ui.button(
                     drawer,
                     ui::Button::with_label("V")
@@ -814,7 +813,8 @@ impl Docking {
 
 impl AreaContainer {
     fn rects(&self, em: f32) -> (Rect, Rect) {
-        let (tabwell_rect, content_rect) = self.rect.split_top_pixels(1.5 * em);
+        let mut content_rect = self.rect;
+        let tabwell_rect = content_rect.split_top(1.5 * em);
         (tabwell_rect, content_rect)
     }
 }

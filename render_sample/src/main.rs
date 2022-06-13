@@ -640,45 +640,37 @@ impl App {
         self.fps_histogram.push_time(dt);
     }
 
-    pub fn draw_menubar(&mut self, fullscreen: Rect) -> (Rect, Rect) {
-        let em = self.ui.em();
-        let menubar_margins = [1.0 * em, 0.25 * em];
+    pub fn draw_menubar(&mut self, content_rect: &mut Rect) {
+        let em = self.ui.theme.font_size;
 
-        let menubar_container = self.ui.begin_container();
+        let top_margin_rect = content_rect.split_top(0.25 * em);
 
-        let (menubar_rect, content_rect) =
-            fullscreen.split_top_pixels(menubar_container.rect().size[1]);
-
-        // Draw the background of the menubar
+        let mut middle_menubar = content_rect.split_top(1.0 * em);
         self.drawer
-            .draw_colored_rect(ColoredRect::new(menubar_rect).color(ColorU32::greyscale(0xE8)));
+            .draw_colored_rect(ColoredRect::new(middle_menubar).color(ColorU32::greyscale(0xE8)));
 
-        let mut cursor = menubar_rect.pos;
+        let mut menubar_split = rectsplit(&mut middle_menubar, SplitDirection::Left);
 
-        self.ui.state.add_rect_to_last_container(Rect {
-            pos: cursor,
-            size: [
-                8.0 * em + 2.0 * menubar_margins[0],
-                1.5 * em + 2.0 * menubar_margins[1],
-            ],
-        });
-        self.ui.button(
+        let _pressed_one = self.ui.rectbutton(
             &mut self.drawer,
-            ui::Button::with_label("Open File").rect(
-                Rect {
-                    pos: cursor,
-                    size: [8.0 * em, 1.5 * em],
-                }
-                .offset(menubar_margins),
-            ),
+            &mut menubar_split,
+            ui::RectButton { label: "Open File" },
         );
-        cursor[0] += 8.0 * em;
 
-        cursor[0] += menubar_margins[0];
+        menubar_split.split(1.0 * em);
+        let _pressed_two = self.ui.rectbutton(
+            &mut self.drawer,
+            &mut menubar_split,
+            ui::RectButton { label: "Second" },
+        );
 
-        self.ui.end_container();
+        let bottom_margin_rect = content_rect.split_top(0.25 * em);
 
-        (menubar_rect, content_rect)
+        self.drawer
+            .draw_colored_rect(ColoredRect::new(top_margin_rect).color(ColorU32::greyscale(0xE8)));
+        self.drawer.draw_colored_rect(
+            ColoredRect::new(bottom_margin_rect).color(ColorU32::greyscale(0xE8)),
+        );
     }
 
     pub fn draw_ui(&mut self, viewport_size: [f32; 2]) {
@@ -692,9 +684,10 @@ impl App {
             pos: [0.0, 0.0],
             size: viewport_size,
         };
+        let mut content_rect = fullscreen;
 
-        let (_, content_rect) = self.draw_menubar(fullscreen);
-        let (content_rect, footer_rect) = content_rect.split_bottom_pixels(3.0 * em);
+        self.draw_menubar(&mut content_rect);
+        let footer_rect = content_rect.split_bottom(3.0 * em);
 
         // -- Content
 
