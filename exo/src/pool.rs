@@ -7,7 +7,6 @@ struct Metadata {
     flags: u32,
 }
 
-#[derive(Debug)]
 pub struct Handle<T> {
     index: u32,
     generation: u32,
@@ -32,6 +31,18 @@ impl<T> PartialEq for Handle<T> {
     }
 }
 impl<T> Eq for Handle<T> {}
+
+impl<T> std::fmt::Debug for Handle<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Handle<{}> {{index: {} , generation: {}}}",
+            std::any::type_name::<T>(),
+            self.index,
+            self.generation
+        )
+    }
+}
 
 impl<T> Handle<T> {
     pub fn invalid() -> Self {
