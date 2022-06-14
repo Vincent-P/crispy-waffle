@@ -112,6 +112,7 @@ impl Ui {
     pub fn splitter_x(&mut self, drawer: &mut Drawer, splitter: Splitter, value: &mut f32) -> bool {
         let mut result = false;
 
+        // -- Layout
         let input_width = 10.0;
         let input_rect = Rect {
             pos: [
@@ -153,6 +154,7 @@ impl Ui {
     pub fn splitter_y(&mut self, drawer: &mut Drawer, splitter: Splitter, value: &mut f32) -> bool {
         let mut result = false;
 
+        // -- Layout
         let input_width = 10.0;
         let input_rect = Rect {
             pos: [
@@ -177,7 +179,6 @@ impl Ui {
         }
 
         // -- Drawing
-
         let color = match (self.activation.focused, self.activation.active) {
             (Some(f), Some(a)) if f == id && a == id => self.theme.button_pressed_bg_color,
             (Some(f), _) if f == id => self.theme.button_hover_bg_color,
@@ -206,11 +207,12 @@ impl Ui {
         let mut result = false;
 
         // -- Layout
+        let em = self.theme.font_size;
         let (label_run, label_layout) =
             drawer.shape_and_layout_text(&self.theme.face(), button.label);
         let label_size = label_layout.size();
         let cutsize = if rectsplit.direction.is_horizontal() {
-            label_size[0]
+            label_size[0] + 2.0 * em
         } else {
             label_size[1]
         };
@@ -246,23 +248,21 @@ impl Ui {
             _ => self.theme.button_bg_outline_color,
         };
 
-        drawer.draw_colored_rect(
+        drawer.draw_colored_rects(&[
             ColoredRect::new(button_rect)
                 .color(outline_color)
                 .border_radius(0.33 * em),
-        );
-
-        drawer.draw_colored_rect(
             ColoredRect::new(button_rect.inset(self.theme.button_outline_width))
                 .color(bg_color)
                 .border_radius(0.33 * em),
-        );
+        ]);
 
         let fg_color = match (self.activation.focused, self.activation.active) {
             (Some(f), Some(a)) if f == id && a == id => self.theme.button_pressed_fg_color,
             (Some(f), _) if f == id => self.theme.button_hover_fg_color,
             _ => self.theme.button_fg_color,
         };
+
         drawer.draw_text_run(
             &label_run,
             &label_layout,

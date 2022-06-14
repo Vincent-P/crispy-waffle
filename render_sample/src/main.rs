@@ -645,19 +645,20 @@ impl App {
 
         let top_margin_rect = content_rect.split_top(0.25 * em);
 
-        let mut middle_menubar = content_rect.split_top(1.0 * em);
+        let mut middle_menubar = content_rect.split_top(1.5 * em);
         self.drawer
             .draw_colored_rect(ColoredRect::new(middle_menubar).color(ColorU32::greyscale(0xE8)));
 
         let mut menubar_split = rectsplit(&mut middle_menubar, SplitDirection::Left);
 
+        menubar_split.split(0.5 * em);
         let _pressed_one = self.ui.rectbutton(
             &mut self.drawer,
             &mut menubar_split,
             ui::RectButton { label: "Open File" },
         );
 
-        menubar_split.split(1.0 * em);
+        menubar_split.split(0.5 * em);
         let _pressed_two = self.ui.rectbutton(
             &mut self.drawer,
             &mut menubar_split,

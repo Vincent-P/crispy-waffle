@@ -128,6 +128,16 @@ impl<'a> Drawer<'a> {
         )
     }
 
+    pub fn draw_colored_rects(&mut self, rects: &[ColoredRect]) {
+        Self::draw_colored_rects_impl(
+            &mut self.vertex_byte_offset,
+            self.vertex_buffer,
+            &mut self.index_offset,
+            self.index_buffer,
+            rects,
+        )
+    }
+
     pub fn draw_textured_rect(&mut self, rect: TexturedRect) {
         Self::draw_textured_rects_impl(
             &mut self.vertex_byte_offset,

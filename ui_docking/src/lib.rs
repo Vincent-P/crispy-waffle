@@ -508,15 +508,21 @@ impl Docking {
         drawer: &mut Drawer,
         docking_ui: &mut DockingUi,
         tabview: &TabView,
-        rect: Rect,
+        rect: &mut Rect,
     ) -> TabState {
         let mut res = TabState::None;
         let em = docking_ui.em_size;
         let id = ui.activation.make_id();
 
-        let mut title_rect = rect;
-        let detach_rect = title_rect.split_right(1.5 * em);
+        // -- Layout
+        let (label_run, label_layout) =
+            drawer.shape_and_layout_text(&ui.theme.face(), &tabview.title);
+        let label_size = label_layout.size();
 
+        let title_rect = rect.split_left(label_size[0] + 1.0 * em);
+        let detach_rect = rect.split_left(1.5 * em);
+
+        // -- Interaction
         if ui.inputs.is_hovering(title_rect) {
             ui.activation.focused = Some(id);
             if ui.activation.active == None && ui.inputs.left_mouse_button_pressed {
@@ -530,6 +536,11 @@ impl Docking {
             res = TabState::ClickedTitle;
         }
 
+        if ui.button(drawer, ui::Button::with_label("D").rect(detach_rect)) {
+            res = TabState::ClickedDetach;
+        }
+
+        // -- Drawing
         let color = match (ui.activation.focused, ui.activation.active) {
             (Some(f), Some(a)) if f == id && a == id => ColorU32::from_f32(0.13, 0.13, 0.43, 1.0),
             (Some(f), _) if f == id => ColorU32::from_f32(0.13, 0.13, 0.83, 1.0),
@@ -537,10 +548,6 @@ impl Docking {
         };
 
         drawer.draw_colored_rect(ColoredRect::new(title_rect).color(color));
-
-        let (label_run, label_layout) =
-            drawer.shape_and_layout_text(&ui.theme.face(), &tabview.title);
-        let label_size = label_layout.size();
 
         drawer.draw_text_run(
             &label_run,
@@ -551,10 +558,6 @@ impl Docking {
         );
 
         ui.state.add_rect_to_last_container(title_rect);
-
-        if ui.button(drawer, ui::Button::with_label("D").rect(detach_rect)) {
-            res = TabState::ClickedDetach;
-        }
 
         res
     }
@@ -622,7 +625,7 @@ impl Docking {
             }
             Area::Container(container) => {
                 // Draw an overlay to dock tabs
-                let overlay_rect = container.rect.inset(2.0 * em);
+                let overlay_rect = container.rects(em).1.inset(2.0 * em);
                 let overlay_color = ColorU32::from_f32(0.25, 0.01, 0.25, 0.25);
                 drawer.draw_colored_rect(ColoredRect::new(overlay_rect).color(overlay_color));
 
@@ -661,23 +664,13 @@ impl Docking {
                     ColoredRect::new(tabwell_rect).color(ColorU32::greyscale(0x3A)),
                 );
 
-                // Draw a border between the tabwell and the content
-                let top_border_rect = tabwell_rect.split_top((0.1 * em).max(1.0));
-                let bottom_border_rect = tabwell_rect.split_bottom(0.2 * em);
-                drawer.draw_colored_rect(
-                    ColoredRect::new(top_border_rect).color(ColorU32::greyscale(0x2A)),
-                );
-                drawer.draw_colored_rect(
-                    ColoredRect::new(bottom_border_rect).color(ColorU32::greyscale(0x2A)),
-                );
-
                 // Draw each tab title
                 for (i, i_tabview) in container.tabviews.iter().enumerate() {
                     let tabview = &self.tabviews[*i_tabview];
 
-                    let tab_rect = tabwell_rect.split_left((tabview.title.len() as f32) * em);
-
-                    let tabstate = Self::draw_tab(ui, drawer, &mut self.ui, tabview, tab_rect);
+                    let _margin = tabwell_rect.split_left(0.5 * em);
+                    let tabstate =
+                        Self::draw_tab(ui, drawer, &mut self.ui, tabview, &mut tabwell_rect);
                     match tabstate {
                         TabState::Dragging => {
                             self.ui.active_tab = Some(*i_tabview);
@@ -723,6 +716,14 @@ impl Docking {
                         },
                     ));
                 }
+
+                // Draw a border between the tabwell and the top, and the tabwell and the content
+                let top_border_rect = tabwell_rect.split_top((0.1 * em).max(1.0));
+                let bottom_border_rect = tabwell_rect.split_bottom(0.2 * em);
+                drawer.draw_colored_rects(&[
+                    ColoredRect::new(top_border_rect).color(ColorU32::greyscale(0x2A)),
+                    ColoredRect::new(bottom_border_rect).color(ColorU32::greyscale(0x2A)),
+                ]);
 
                 if container.tabviews.is_empty() {
                     // Draw a background for the empty tab
