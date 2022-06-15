@@ -3,6 +3,15 @@ enum Entry<T> {
     Filled(T),
 }
 
+impl<T: std::fmt::Debug> std::fmt::Debug for Entry<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Entry::Empty(freelist) => write!(f, "Freelist link to {:?}", freelist),
+            Entry::Filled(value) => write!(f, "{:?}", value),
+        }
+    }
+}
+
 struct Metadata {
     flags: u32,
 }
@@ -67,29 +76,33 @@ impl<T> Default for Handle<T> {
 pub struct Pool<T> {
     values: Vec<(Metadata, Entry<T>)>,
     freelist_head: Option<u32>,
-    size: u32,
+    length: u32,
 }
 
-impl<T> Default for Pool<T> {
+impl<T: std::fmt::Debug> Default for Pool<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T> Pool<T> {
+impl<T: std::fmt::Debug> Pool<T> {
     pub fn new() -> Self {
         Pool {
             values: vec![],
             freelist_head: None,
-            size: 0,
+            length: 0,
         }
+    }
+
+    pub fn len(&self) -> u32 {
+        self.length
     }
 
     pub fn with_capacity(capacity: u32) -> Self {
         let mut pool = Pool {
             values: Vec::with_capacity(capacity as usize),
             freelist_head: None,
-            size: 0,
+            length: 0,
         };
         pool.init_freelist(0);
         pool
@@ -111,7 +124,7 @@ impl<T> Pool<T> {
             self.values
                 .resize_with(new_capacity, || (Metadata { flags: 0 }, Entry::Empty(None)));
             self.init_freelist(old_capacity);
-            self.freelist_head = self.values[old_capacity].1.as_empty().unwrap();
+            self.freelist_head = Some(old_capacity as u32);
         }
 
         let i_element = self.freelist_head.unwrap();
@@ -125,7 +138,7 @@ impl<T> Pool<T> {
         metadata.set_is_occupied(true);
         assert!(metadata.get_is_occupied());
 
-        self.size += 1;
+        self.length += 1;
 
         Handle {
             index: i_element,
@@ -163,7 +176,7 @@ impl<T> Pool<T> {
         *element = Entry::Empty(self.freelist_head);
         self.freelist_head = Some(handle.index);
 
-        self.size -= 1;
+        self.length -= 1;
     }
 }
 
@@ -189,6 +202,18 @@ impl Metadata {
 
     pub fn set_generation(&mut self, generation: u32) {
         self.flags = (self.flags & OCCUPIED_MASK) | (generation & GENERATION_MASK);
+    }
+}
+
+impl std::fmt::Debug for Metadata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Metadata {{.is_occupied = {}, .generation = {}, .raw = {}}}",
+            self.get_is_occupied(),
+            self.get_generation(),
+            self.flags
+        )
     }
 }
 

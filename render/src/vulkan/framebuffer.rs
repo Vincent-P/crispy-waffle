@@ -9,7 +9,7 @@ use erupt::{vk, DeviceLoader};
 pub const MAX_ATTACHMENTS: usize = 4;
 pub const MAX_RENDERPASS: usize = 4; // max number of renderpasses per framebuffer
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FramebufferFormat {
     pub size: [i32; 3],
     pub attachment_formats: DynamicArray<vk::Format, MAX_ATTACHMENTS>,
@@ -26,6 +26,7 @@ impl Default for FramebufferFormat {
     }
 }
 
+#[derive(Debug)]
 pub struct Framebuffer {
     pub vkhandle: vk::Framebuffer,
     pub format: FramebufferFormat,
@@ -34,20 +35,20 @@ pub struct Framebuffer {
     pub render_passes: DynamicArray<Renderpass, MAX_RENDERPASS>,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ClearColorValue {
     Float32([f32; 4]),
     Int32([i32; 4]),
     Uint32([u32; 4]),
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ClearDepthValue {
     depth: f32,
     stencil: u32,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LoadOp {
     Load,
     ClearColor(ClearColorValue),
@@ -55,6 +56,7 @@ pub enum LoadOp {
     Ignore,
 }
 
+#[derive(Debug)]
 pub struct Renderpass {
     pub vkhandle: vk::RenderPass,
     pub load_ops: DynamicArray<LoadOp, MAX_ATTACHMENTS>,

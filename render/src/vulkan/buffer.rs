@@ -9,6 +9,7 @@ use gpu_alloc_erupt::EruptMemoryDevice;
 
 pub type MemoryUsageFlags = gpu_alloc::UsageFlags;
 
+#[derive(Debug)]
 pub struct BufferSpec {
     pub size: usize,
     pub usages: vk::BufferUsageFlags,
@@ -25,6 +26,7 @@ impl Default for BufferSpec {
     }
 }
 
+#[derive(Debug)]
 pub struct Buffer {
     pub vkhandle: vk::Buffer,
     pub memory_block: Option<gpu_alloc::MemoryBlock<vk::DeviceMemory>>,

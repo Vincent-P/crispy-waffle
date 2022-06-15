@@ -122,3 +122,10 @@ impl<T: Copy, const N: usize, const CAPACITY: usize> From<[T; N]> for DynamicArr
         dynarray
     }
 }
+
+// Debug
+impl<T: std::fmt::Debug, const CAPACITY: usize> std::fmt::Debug for DynamicArray<T, CAPACITY> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.as_slice())
+    }
+}

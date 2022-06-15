@@ -9,27 +9,31 @@ use std::ffi::CString;
 
 pub const MAX_RENDER_STATES: usize = 4;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum PrimitiveTopology {
     TriangleList,
     PointList,
 }
 
+#[derive(Debug)]
 pub struct DepthState {
     pub test: Option<vk::CompareOp>,
     pub enable_write: bool,
     pub bias: f32,
 }
 
+#[derive(Debug)]
 pub struct RasterizationState {
     pub enable_conservative_rasterization: bool,
     pub culling: bool,
 }
 
+#[derive(Debug)]
 pub struct InputAssemblyState {
     pub topology: PrimitiveTopology,
 }
 
+#[derive(Debug)]
 pub struct RenderState {
     pub depth: DepthState,
     pub rasterization: RasterizationState,
@@ -37,12 +41,14 @@ pub struct RenderState {
     pub alpha_blending: bool,
 }
 
+#[derive(Debug)]
 pub struct GraphicsState {
     pub vertex_shader: Handle<Shader>,
     pub fragment_shader: Handle<Shader>,
     pub attachments_format: FramebufferFormat,
 }
 
+#[derive(Debug)]
 pub struct GraphicsProgram {
     pub name: String,
     pub graphics_state: GraphicsState,

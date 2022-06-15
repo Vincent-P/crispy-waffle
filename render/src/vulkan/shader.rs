@@ -6,6 +6,7 @@ use super::error::*;
 use erupt::vk;
 use std::path::PathBuf;
 
+#[derive(Debug)]
 pub struct Shader {
     pub path: PathBuf,
     pub vkhandle: vk::ShaderModule,

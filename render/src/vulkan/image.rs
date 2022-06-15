@@ -7,7 +7,7 @@ use erupt::vk;
 use gpu_alloc::{Request, UsageFlags};
 use gpu_alloc_erupt::EruptMemoryDevice;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum ImageState {
     Null,
     GraphicsShaderRead,
@@ -21,12 +21,14 @@ pub enum ImageState {
     Present,
 }
 
+#[derive(Debug)]
 pub struct ImageAccess {
     pub stage: vk::PipelineStageFlags,
     pub access: vk::AccessFlags,
     pub layout: vk::ImageLayout,
 }
 
+#[derive(Debug)]
 pub struct ImageSpec {
     pub size: [i32; 3],
     pub mip_levels: u32,
@@ -51,6 +53,7 @@ impl Default for ImageSpec {
     }
 }
 
+#[derive(Debug)]
 pub struct ImageView {
     pub range: vk::ImageSubresourceRange,
     pub vkhandle: vk::ImageView,
@@ -59,6 +62,7 @@ pub struct ImageView {
     pub format: vk::Format,
 }
 
+#[derive(Debug)]
 pub struct Image {
     pub vkhandle: vk::Image,
     pub memory_block: Option<gpu_alloc::MemoryBlock<vk::DeviceMemory>>,
