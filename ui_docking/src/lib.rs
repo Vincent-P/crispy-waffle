@@ -25,6 +25,7 @@ struct AreaSplitter {
     left_child: Handle<Area>,
     right_child: Handle<Area>,
     splits: f32,
+    parent: Handle<Area>,
     rect: Rect,
 }
 
@@ -34,6 +35,7 @@ struct AreaSplitter {
 struct AreaContainer {
     tabviews: Vec<usize>,
     selected: Option<usize>,
+    parent: Handle<Area>,
     rect: Rect,
 }
 
@@ -89,6 +91,7 @@ impl Docking {
         docking.root = docking.area_pool.add(Area::Container(AreaContainer {
             selected: None,
             tabviews: Vec::new(),
+            parent: Handle::invalid(),
             rect: Rect {
                 pos: [0.0, 0.0],
                 size: [0.0, 0.0],
@@ -151,14 +154,64 @@ impl Docking {
         tabview.area = area_handle;
     }
 
-    fn remove_tabview(
-        area_pool: &mut Pool<Area>,
-        tabviews: &mut [TabView],
-        i_tabview: usize,
-        area_handle: Handle<Area>,
-    ) {
+    // Remove all redondant areas bubbling up from area_handle to its root
+    fn remove_empty_areas(area_pool: &mut Pool<Area>, area_handle: Handle<Area>) {
+        if !area_handle.is_valid() {
+            return;
+        }
+
         let area = area_pool.get_mut(area_handle);
+        let parent_handle = area.parent();
+
+        match area {
+            Area::Splitter(splitter) => {
+                let lchild = splitter.left_child;
+                let rchild = splitter.right_child;
+
+                // There is an empty split
+                if (lchild.is_valid() && !rchild.is_valid())
+                    || (!lchild.is_valid() && rchild.is_valid())
+                {
+                    let child = if lchild.is_valid() { lchild } else { rchild };
+
+                    // Reparent the child to the parent of the current node
+                    *area_pool.get_mut(child).parent_mut() = parent_handle;
+
+                    // Update the parent to have the child as child instead of the current node
+                    if parent_handle.is_valid() {
+                        area_pool
+                            .get_mut(parent_handle)
+                            .splitter_mut()
+                            .expect("Only splitters have children.")
+                            .replace_child(area_handle, child);
+                    } else {
+                        // We dont have a parent? We are probably the root.
+                    }
+                }
+            }
+
+            Area::Container(container) => {
+                if container.tabviews.is_empty() && parent_handle.is_valid() {
+                    // Update the parent to have the child as child instead of the current node
+                    area_pool
+                        .get_mut(parent_handle)
+                        .splitter_mut()
+                        .expect("Only splitters have children.")
+                        .replace_child(area_handle, Handle::invalid());
+                }
+            }
+        }
+
+        Self::remove_empty_areas(area_pool, parent_handle);
+    }
+
+    // Remove a tabview from a container.
+    // It will remove all redondant areas
+    fn remove_tabview(area_pool: &mut Pool<Area>, tabviews: &mut [TabView], i_tabview: usize) {
         let tabview = &mut tabviews[i_tabview];
+        let area_handle = tabview.area;
+        let area = area_pool.get_mut(area_handle);
+        tabview.area = Handle::invalid();
 
         let container = area
             .container_mut()
@@ -174,40 +227,11 @@ impl Docking {
                     .position(|i| *i == i_tabview)
                     .unwrap(),
             );
-        } else if container.tabviews.len() == 1 {
+        } else {
             assert!(container.tabviews[0] == i_tabview);
             container.tabviews.pop();
+            Self::remove_empty_areas(area_pool, area_handle);
         }
-
-        tabview.area = Handle::invalid();
-    }
-
-    fn find_parent(
-        area_pool: &Pool<Area>,
-        node: Handle<Area>,
-        child: Handle<Area>,
-    ) -> Option<Handle<Area>> {
-        let area = area_pool.get(node);
-
-        if let Area::Splitter(splitter) = area {
-            if splitter.left_child == child {
-                return Some(node);
-            }
-
-            if splitter.right_child == child {
-                return Some(node);
-            }
-
-            if let Some(found) = Self::find_parent(area_pool, splitter.left_child, child) {
-                return Some(found);
-            }
-
-            if let Some(found) = Self::find_parent(area_pool, splitter.right_child, child) {
-                return Some(found);
-            }
-        }
-
-        None
     }
 
     // Split previous area with new_area in split_direction
@@ -216,10 +240,11 @@ impl Docking {
         tabviews: &mut [TabView],
         previous_area_handle: Handle<Area>,
         split_direction: SplitDirection,
-        new_area_handle: Handle<Area>,
+        new_child_handle: Handle<Area>,
     ) {
         // Copy the previous area
         let previous_area = area_pool.get(previous_area_handle).clone();
+        let previous_parent = previous_area.parent();
         let new_old_area_handle = area_pool.add(previous_area);
 
         // Update all tabviews to use the new handle
@@ -232,9 +257,9 @@ impl Docking {
         };
 
         let (left_child, right_child) = match split_direction {
-            SplitDirection::Top | SplitDirection::Left => (new_area_handle, new_old_area_handle),
+            SplitDirection::Top | SplitDirection::Left => (new_child_handle, new_old_area_handle),
             SplitDirection::Bottom | SplitDirection::Right => {
-                (new_old_area_handle, new_area_handle)
+                (new_old_area_handle, new_child_handle)
             }
         };
 
@@ -244,15 +269,23 @@ impl Docking {
             left_child,
             right_child,
             splits: 0.5,
+            parent: previous_parent,
             rect: Rect {
                 pos: [0.0, 0.0],
                 size: [0.0, 0.0],
             },
         });
+
+        *area_pool.get_mut(new_child_handle).parent_mut() = previous_area_handle;
+        *area_pool.get_mut(new_old_area_handle).parent_mut() = previous_area_handle;
     }
 
     // Propagate rect to children, and select tabview if none is selected
     fn update_area_rect(area_pool: &mut Pool<Area>, area_handle: Handle<Area>, area_rect: Rect) {
+        if !area_handle.is_valid() {
+            return;
+        }
+
         match area_pool.get_mut(area_handle) {
             Area::Container(container) => {
                 container.rect = area_rect;
@@ -326,7 +359,6 @@ impl Docking {
                             &mut self.area_pool,
                             &mut self.tabviews,
                             event.i_tabview,
-                            previous_area,
                         );
                         Self::insert_tabview(
                             &mut self.area_pool,
@@ -338,16 +370,11 @@ impl Docking {
                 }
 
                 DockingEvent::Split(direction, i_dropped_tab, container_handle) => {
-                    let previous_area = self.tabviews[*i_dropped_tab].area;
-                    Self::remove_tabview(
-                        &mut self.area_pool,
-                        &mut self.tabviews,
-                        *i_dropped_tab,
-                        previous_area,
-                    );
+                    Self::remove_tabview(&mut self.area_pool, &mut self.tabviews, *i_dropped_tab);
                     let new_container = self.area_pool.add(Area::Container(AreaContainer {
                         selected: Some(0),
                         tabviews: vec![],
+                        parent: Handle::invalid(),
                         rect: Rect::default(),
                     }));
 
@@ -368,17 +395,12 @@ impl Docking {
                 }
 
                 DockingEvent::DetachTab(i_tabview) => {
-                    let container_handle = self.tabviews[*i_tabview].area;
-                    Self::remove_tabview(
-                        &mut self.area_pool,
-                        &mut self.tabviews,
-                        *i_tabview,
-                        container_handle,
-                    );
+                    Self::remove_tabview(&mut self.area_pool, &mut self.tabviews, *i_tabview);
 
                     let new_container = self.area_pool.add(Area::Container(AreaContainer {
                         selected: Some(0),
                         tabviews: vec![*i_tabview],
+                        parent: Handle::invalid(),
                         rect: Rect {
                             pos: [200.0, 200.0],
                             size: [500.0, 500.0],
@@ -478,68 +500,69 @@ impl Docking {
             None => return,
         };
 
-        match area {
-            Area::Container(container) => {
-                // Draw an overlay to dock tabs
-                const HANDLE_SIZE: f32 = 3.0;
-                const HANDLE_OFFSET: f32 = HANDLE_SIZE + 0.5;
-                let drop_rect = Rect::center(container.rect, [HANDLE_SIZE * em, HANDLE_SIZE * em]);
-                let split_top_rect = drop_rect.clone().offset([0.0, -HANDLE_OFFSET * em]);
-                let split_right_rect = drop_rect.clone().offset([HANDLE_OFFSET * em, 0.0]);
-                let split_bottom_rect = drop_rect.clone().offset([0.0, HANDLE_OFFSET * em]);
-                let split_left_rect = drop_rect.clone().offset([-HANDLE_OFFSET * em, 0.0]);
+        if let Area::Container(container) = area {
+            // Draw an overlay to dock tabs
+            const HANDLE_SIZE: f32 = 3.0;
+            const HANDLE_OFFSET: f32 = HANDLE_SIZE + 0.5;
+            let drop_rect = Rect::center(container.rect, [HANDLE_SIZE * em, HANDLE_SIZE * em]);
+            let split_top_rect = drop_rect.clone().offset([0.0, -HANDLE_OFFSET * em]);
+            let split_right_rect = drop_rect.clone().offset([HANDLE_OFFSET * em, 0.0]);
+            let split_bottom_rect = drop_rect.clone().offset([0.0, HANDLE_OFFSET * em]);
+            let split_left_rect = drop_rect.clone().offset([-HANDLE_OFFSET * em, 0.0]);
 
-                let overlay_color = ColorU32::from_f32(0.25, 0.01, 0.25, 0.25);
-                drawer.draw_colored_rects(&[
-                    ColoredRect::new(drop_rect).color(overlay_color),
-                    ColoredRect::new(split_top_rect).color(overlay_color),
-                    ColoredRect::new(split_right_rect).color(overlay_color),
-                    ColoredRect::new(split_bottom_rect).color(overlay_color),
-                    ColoredRect::new(split_left_rect).color(overlay_color),
-                ]);
+            let overlay_color = ColorU32::from_f32(0.25, 0.01, 0.25, 0.25);
+            drawer.draw_colored_rects(&[
+                ColoredRect::new(drop_rect).color(overlay_color),
+                ColoredRect::new(split_top_rect).color(overlay_color),
+                ColoredRect::new(split_right_rect).color(overlay_color),
+                ColoredRect::new(split_bottom_rect).color(overlay_color),
+                ColoredRect::new(split_left_rect).color(overlay_color),
+            ]);
 
-                // Drop a tab in a container
-                if !ui.inputs.left_mouse_button_pressed {
-                    if ui.inputs.is_hovering(drop_rect) {
-                        docking_ui.events.push(DockingEvent::DropTab(DropTabEvent {
-                            i_tabview: active_tab,
-                            in_container: area_handle,
-                        }));
+            // Drop a tab in a container
+            if !ui.inputs.left_mouse_button_pressed {
+                if ui.inputs.is_hovering(drop_rect) {
+                    docking_ui.events.push(DockingEvent::DropTab(DropTabEvent {
+                        i_tabview: active_tab,
+                        in_container: area_handle,
+                    }));
 
-                        docking_ui.active_tab = None;
-                    } else if ui.inputs.is_hovering(split_top_rect) {
-                        docking_ui.events.push(DockingEvent::Split(
-                            SplitDirection::Top,
-                            active_tab,
-                            area_handle,
-                        ));
-                    } else if ui.inputs.is_hovering(split_right_rect) {
-                        docking_ui.events.push(DockingEvent::Split(
-                            SplitDirection::Right,
-                            active_tab,
-                            area_handle,
-                        ));
-                    } else if ui.inputs.is_hovering(split_bottom_rect) {
-                        docking_ui.events.push(DockingEvent::Split(
-                            SplitDirection::Bottom,
-                            active_tab,
-                            area_handle,
-                        ));
-                    } else if ui.inputs.is_hovering(split_left_rect) {
-                        docking_ui.events.push(DockingEvent::Split(
-                            SplitDirection::Left,
-                            active_tab,
-                            area_handle,
-                        ));
-                    }
+                    docking_ui.active_tab = None;
+                } else if ui.inputs.is_hovering(split_top_rect) {
+                    docking_ui.events.push(DockingEvent::Split(
+                        SplitDirection::Top,
+                        active_tab,
+                        area_handle,
+                    ));
+                } else if ui.inputs.is_hovering(split_right_rect) {
+                    docking_ui.events.push(DockingEvent::Split(
+                        SplitDirection::Right,
+                        active_tab,
+                        area_handle,
+                    ));
+                } else if ui.inputs.is_hovering(split_bottom_rect) {
+                    docking_ui.events.push(DockingEvent::Split(
+                        SplitDirection::Bottom,
+                        active_tab,
+                        area_handle,
+                    ));
+                } else if ui.inputs.is_hovering(split_left_rect) {
+                    docking_ui.events.push(DockingEvent::Split(
+                        SplitDirection::Left,
+                        active_tab,
+                        area_handle,
+                    ));
                 }
             }
-            _ => {}
         }
     }
 
     // Draw the ui for a docking area
     fn draw_area_rec(&mut self, ui: &mut ui::Ui, drawer: &mut Drawer, area_handle: Handle<Area>) {
+        if !area_handle.is_valid() {
+            return;
+        }
+
         let em = self.ui.em_size;
         let area = self.area_pool.get_mut(area_handle);
 
@@ -678,6 +701,31 @@ impl Area {
         match self {
             Self::Container(inner) => Some(inner),
             _ => None,
+        }
+    }
+
+    pub fn parent(&self) -> Handle<Area> {
+        match self {
+            Self::Splitter(AreaSplitter { parent, .. }) => *parent,
+            Self::Container(AreaContainer { parent, .. }) => *parent,
+        }
+    }
+
+    pub fn parent_mut(&mut self) -> &mut Handle<Area> {
+        match self {
+            Self::Splitter(AreaSplitter { parent, .. }) => parent,
+            Self::Container(AreaContainer { parent, .. }) => parent,
+        }
+    }
+}
+
+impl AreaSplitter {
+    pub fn replace_child(&mut self, previous_child: Handle<Area>, new_child: Handle<Area>) {
+        if self.left_child == previous_child {
+            self.left_child = new_child;
+        } else {
+            assert!(self.right_child == previous_child);
+            self.right_child = new_child;
         }
     }
 }
