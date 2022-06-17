@@ -714,6 +714,14 @@ impl App {
             }
         };
 
+        self.drawer.draw_label(
+            &self.ui.theme.face(),
+            "Surprise",
+            content_rect,
+            0,
+            ColorU32::red(),
+        );
+
         self.docking.begin_docking(&self.ui, content_rect);
 
         if let Some(content1_rect) = self.docking.tabview("Content 1") {
@@ -742,47 +750,49 @@ impl App {
             cursor[1] += 3.0 * em;
         }
 
-        if let Some(content2_rect) = self.docking.tabview("Content 2") {
-            let mut cursor = content2_rect.pos;
-            cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
+        if false {
+            if let Some(content2_rect) = self.docking.tabview("Content 2") {
+                let mut cursor = content2_rect.pos;
+                cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
 
-            self.drawer.draw_colored_rect(
-                ColoredRect::new(content2_rect).color(ColorU32::greyscale(0x48)),
-            );
+                self.drawer.draw_colored_rect(
+                    ColoredRect::new(content2_rect).color(ColorU32::greyscale(0x48)),
+                );
 
-            self.drawer.draw_label(
-                &self.ui.theme.face(),
-                &format!("Font size {:.2}", self.ui.theme.font_size),
-                Rect {
-                    pos: cursor,
-                    size: [14.0 * em, 2.0 * em],
-                },
-                0,
-                ColorU32::greyscale(0x00),
-            );
-            cursor[1] += 3.0 * em;
+                self.drawer.draw_label(
+                    &self.ui.theme.face(),
+                    &format!("Font size {:.2}", self.ui.theme.font_size),
+                    Rect {
+                        pos: cursor,
+                        size: [14.0 * em, 2.0 * em],
+                    },
+                    0,
+                    ColorU32::greyscale(0x00),
+                );
+                cursor[1] += 3.0 * em;
 
-            if self.ui.button(
-                &mut self.drawer,
-                ui::Button::with_label("Increase font size by 2").rect(Rect {
-                    pos: cursor,
-                    size: [20.0 * em, 1.5 * em],
-                }),
-            ) {
-                self.ui.theme.font_size += 2.0;
+                if self.ui.button(
+                    &mut self.drawer,
+                    ui::Button::with_label("Increase font size by 2").rect(Rect {
+                        pos: cursor,
+                        size: [20.0 * em, 1.5 * em],
+                    }),
+                ) {
+                    self.ui.theme.font_size += 2.0;
+                }
+                cursor[1] += 3.0 * em;
+
+                if self.ui.button(
+                    &mut self.drawer,
+                    ui::Button::with_label("Decrease font size by 2").rect(Rect {
+                        pos: cursor,
+                        size: [20.0 * em, 1.5 * em],
+                    }),
+                ) {
+                    self.ui.theme.font_size -= 2.0;
+                }
+                cursor[1] += 3.0 * em;
             }
-            cursor[1] += 3.0 * em;
-
-            if self.ui.button(
-                &mut self.drawer,
-                ui::Button::with_label("Decrease font size by 2").rect(Rect {
-                    pos: cursor,
-                    size: [20.0 * em, 1.5 * em],
-                }),
-            ) {
-                self.ui.theme.font_size -= 2.0;
-            }
-            cursor[1] += 3.0 * em;
         }
 
         self.docking.end_docking(&mut self.ui, &mut self.drawer);

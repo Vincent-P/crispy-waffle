@@ -7,7 +7,7 @@ pub struct Docking {
     root: Handle<Area>,
     default_area: Handle<Area>,
     tabviews: Vec<TabView>,
-    floating_containers: Vec<Handle<Area>>,
+    floating_containers: Vec<(Handle<Area>, Rect)>,
     ui: DockingUi,
 }
 
@@ -64,6 +64,7 @@ enum DockingEvent {
     DropTab(DropTabEvent),
     DetachTab(usize),
     Split(SplitDirection, usize, Handle<Area>),
+    MoveFloating(usize, [f32; 2]),
 }
 
 struct DockingUi {
@@ -357,18 +358,26 @@ impl Docking {
     }
 
     pub fn begin_docking(&mut self, ui: &ui::Ui, rect: Rect) {
-        Self::update_area_rect(&mut self.area_pool, self.root, rect);
-
         self.ui.em_size = ui.theme.font_size;
         self.ui.active_tab = None;
+
+        let em = self.ui.em_size;
+
+        Self::update_area_rect(&mut self.area_pool, self.root, rect);
+
+        for (area, rect) in &mut self.floating_containers {
+            let mut copy = *rect;
+            let _titlebar_rect = copy.split_top(1.5 * em);
+            Self::update_area_rect(&mut self.area_pool, *area, copy);
+        }
     }
 
     pub fn end_docking(&mut self, ui: &mut ui::Ui, drawer: &mut Drawer) {
         let floating_roots = self.floating_containers.clone();
 
         self.draw_area_rec(ui, drawer, self.root);
-        for floating in floating_roots {
-            self.draw_area_rec(ui, drawer, floating);
+        for i in 0..floating_roots.len() {
+            self.draw_floating_area(ui, drawer, i);
         }
 
         self.draw_docking(ui, drawer);
@@ -428,32 +437,58 @@ impl Docking {
                         new_container,
                     );
 
+                    // TODO: does not work :)
                     Self::remove_empty_areas(
                         &mut self.area_pool,
                         &mut self.tabviews,
-                        previous_tab_area,
+                        new_container,
                     );
                 }
 
                 DockingEvent::DetachTab(i_tabview) => {
+                    let previous_area = self.tabviews[*i_tabview].area;
                     Self::remove_tabview(&mut self.area_pool, &mut self.tabviews, *i_tabview);
 
+                    let new_rect = Rect {
+                        pos: [200.0, 200.0],
+                        size: [500.0, 500.0],
+                    };
                     let new_container = self.area_pool.add(Area::Container(AreaContainer {
                         selected: Some(0),
                         tabviews: vec![*i_tabview],
                         parent: Handle::invalid(),
                         rect: Rect {
-                            pos: [200.0, 200.0],
-                            size: [500.0, 500.0],
+                            pos: [0.0, 0.0],
+                            size: [0.0, 0.0],
                         },
                     }));
 
                     self.tabviews[*i_tabview].area = new_container;
-                    self.floating_containers.push(new_container);
+                    self.floating_containers.push((new_container, new_rect));
+
+                    Self::remove_empty_areas(
+                        &mut self.area_pool,
+                        &mut self.tabviews,
+                        previous_area,
+                    );
+                }
+                DockingEvent::MoveFloating(i_floating, pos) => {
+                    self.floating_containers[*i_floating].1.pos = *pos;
                 }
             }
         }
         self.ui.events.clear();
+
+        while let Some(i_to_remove) = self.floating_containers.iter().position(|(area, _rect)| {
+            match self.area_pool.get(*area) {
+                Area::Container(container) => container.tabviews.is_empty(),
+                _ => false,
+            }
+        }) {
+            self.area_pool
+                .remove(self.floating_containers[i_to_remove].0);
+            self.floating_containers.swap_remove(i_to_remove);
+        }
     }
 }
 
@@ -609,6 +644,10 @@ impl Docking {
 
         match area {
             Area::Container(container) => {
+                if container.tabviews.is_empty() {
+                    return;
+                }
+
                 let (tabwell_rect, _content_rect) = container.rects(self.ui.em_size);
                 let mut tabwell_rect = tabwell_rect;
 
@@ -676,6 +715,38 @@ impl Docking {
                 self.draw_area_rec(ui, drawer, right_child);
             }
         }
+    }
+
+    fn draw_floating_area(&mut self, ui: &mut ui::Ui, drawer: &mut Drawer, i_floating_area: usize) {
+        let em = self.ui.em_size;
+
+        let (area, mut rect) = self.floating_containers[i_floating_area];
+        let titlebar_rect = rect.split_top(1.5 * em);
+
+        // -- Draw titlebar
+        {
+            let mut drag_pos = None;
+
+            let id = ui.activation.make_id();
+            if ui.inputs.is_hovering(titlebar_rect) {
+                ui.activation.focused = Some(id);
+                if ui.activation.active == None && ui.inputs.left_mouse_button_pressed {
+                    ui.activation.active = Some(id);
+                }
+            }
+            if ui.activation.active == Some(id) {
+                drag_pos = Some(ui.inputs.mouse_pos);
+            }
+            drawer.draw_colored_rect(ColoredRect::new(titlebar_rect));
+
+            if let Some(dragging) = drag_pos {
+                self.ui
+                    .events
+                    .push(DockingEvent::MoveFloating(i_floating_area, dragging));
+            }
+        }
+
+        self.draw_area_rec(ui, drawer, area);
     }
 
     fn draw_docking(&mut self, ui: &mut ui::Ui, drawer: &mut Drawer) {
