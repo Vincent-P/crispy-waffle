@@ -5,15 +5,7 @@ use anyhow::Result;
 use drawer2d::{drawer::*, font::*, glyph_cache::GlyphEvent, rect::*};
 use exo::{dynamic_array::DynamicArray, pool::Handle};
 use raw_window_handle::HasRawWindowHandle;
-use render::{
-    bindings,
-    ring_buffer::*,
-    vk, vulkan,
-    vulkan::{
-        contexts::{GraphicsContextMethods, TransferContextMethods},
-        error::VulkanResult,
-    },
-};
+use render::{bindings, ring_buffer::*, vk, vulkan, vulkan::error::VulkanResult};
 use std::{ffi::CStr, mem::size_of, os::raw::c_char, path::PathBuf, rc::Rc, time::Instant};
 use winit::{
     event::{ElementState, Event, MouseButton, WindowEvent},
@@ -434,26 +426,26 @@ impl Renderer {
         let mut ctx = self.device.get_graphics_context(context_pool)?;
         {
             profile::scope!("command recording");
-            ctx.begin(&self.device)?;
-            ctx.wait_for_acquired(
+            ctx.base().begin(&self.device)?;
+            ctx.base_mut().wait_for_acquired(
                 &self.surface,
                 vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
             );
 
             if self.i_frame == 0 {
-                ctx.barrier(
+                ctx.base().barrier(
                     &mut self.device,
                     self.glyph_atlas,
                     vulkan::ImageState::TransferDst,
                 );
-                ctx.clear_image(
+                ctx.transfer().clear_image(
                     &self.device,
                     self.glyph_atlas,
                     vulkan::ClearColorValue::Float32([0.0, 0.0, 0.0, 1.0]),
                 );
             }
 
-            ctx.barrier(
+            ctx.base().barrier(
                 &mut self.device,
                 self.surface.images[self.surface.current_image as usize],
                 vulkan::ImageState::ColorAttachment,
@@ -489,18 +481,18 @@ impl Renderer {
                     },
                 );
                 if !glyphs_to_upload.is_empty() {
-                    ctx.barrier(
+                    ctx.base().barrier(
                         &mut self.device,
                         self.glyph_atlas,
                         vulkan::ImageState::TransferDst,
                     );
-                    ctx.copy_buffer_to_image(
+                    ctx.transfer_mut().copy_buffer_to_image(
                         &self.device,
                         self.upload_buffer.buffer,
                         self.glyph_atlas,
                         &glyphs_to_upload,
                     );
-                    ctx.barrier(
+                    ctx.base().barrier(
                         &mut self.device,
                         self.glyph_atlas,
                         vulkan::ImageState::GraphicsShaderRead,
@@ -602,17 +594,17 @@ impl Renderer {
             }
 
             ctx.end_pass(&self.device);
-            ctx.barrier(
+            ctx.base().barrier(
                 &mut self.device,
                 self.surface.images[self.surface.current_image as usize],
                 vulkan::ImageState::Present,
             );
-            ctx.end(&self.device)?;
+            ctx.base().end(&self.device)?;
         }
 
         {
             profile::scope!("submit and present");
-            ctx.prepare_present(&self.surface);
+            ctx.base_mut().prepare_present(&self.surface);
             self.device
                 .submit(&ctx, &[&self.fence], &[(self.i_frame as u64) + 1])?;
             self.i_frame += 1;
@@ -748,49 +740,47 @@ impl App {
             cursor[1] += 3.0 * em;
         }
 
-        if false {
-            if let Some(content2_rect) = self.docking.tabview("Content 2") {
-                let mut cursor = content2_rect.pos;
-                cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
+        if let Some(content2_rect) = self.docking.tabview("Content 2") {
+            let mut cursor = content2_rect.pos;
+            cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
 
-                self.drawer.draw_colored_rect(
-                    ColoredRect::new(content2_rect).color(ColorU32::greyscale(0x48)),
-                );
+            self.drawer.draw_colored_rect(
+                ColoredRect::new(content2_rect).color(ColorU32::greyscale(0x48)),
+            );
 
-                self.drawer.draw_label(
-                    &self.ui.theme.face(),
-                    &format!("Font size {:.2}", self.ui.theme.font_size),
-                    Rect {
-                        pos: cursor,
-                        size: [14.0 * em, 2.0 * em],
-                    },
-                    0,
-                    ColorU32::greyscale(0x00),
-                );
-                cursor[1] += 3.0 * em;
+            self.drawer.draw_label(
+                &self.ui.theme.face(),
+                &format!("Font size {:.2}", self.ui.theme.font_size),
+                Rect {
+                    pos: cursor,
+                    size: [14.0 * em, 2.0 * em],
+                },
+                0,
+                ColorU32::greyscale(0x00),
+            );
+            cursor[1] += 3.0 * em;
 
-                if self.ui.button(
-                    &mut self.drawer,
-                    ui::Button::with_label("Increase font size by 2").rect(Rect {
-                        pos: cursor,
-                        size: [20.0 * em, 1.5 * em],
-                    }),
-                ) {
-                    self.ui.theme.font_size += 2.0;
-                }
-                cursor[1] += 3.0 * em;
-
-                if self.ui.button(
-                    &mut self.drawer,
-                    ui::Button::with_label("Decrease font size by 2").rect(Rect {
-                        pos: cursor,
-                        size: [20.0 * em, 1.5 * em],
-                    }),
-                ) {
-                    self.ui.theme.font_size -= 2.0;
-                }
-                cursor[1] += 3.0 * em;
+            if self.ui.button(
+                &mut self.drawer,
+                ui::Button::with_label("Increase font size by 2").rect(Rect {
+                    pos: cursor,
+                    size: [20.0 * em, 1.5 * em],
+                }),
+            ) {
+                self.ui.theme.font_size += 2.0;
             }
+            cursor[1] += 3.0 * em;
+
+            if self.ui.button(
+                &mut self.drawer,
+                ui::Button::with_label("Decrease font size by 2").rect(Rect {
+                    pos: cursor,
+                    size: [20.0 * em, 1.5 * em],
+                }),
+            ) {
+                self.ui.theme.font_size -= 2.0;
+            }
+            cursor[1] += 3.0 * em;
         }
 
         self.docking.end_docking(&mut self.ui, &mut self.drawer);

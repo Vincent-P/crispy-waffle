@@ -210,13 +210,13 @@ impl Device {
         unsafe { self.device.destroy_device(None) };
     }
 
-    pub fn submit(
+    pub fn submit<Context: AsRef<TransferContext>>(
         &self,
-        context: &dyn HasBaseContext,
+        context: &Context,
         signal_fences: &[&Fence],
         signal_values: &[u64],
     ) -> VulkanResult<()> {
-        let context = context.base_context();
+        let context = context.as_ref().base_context();
 
         let mut signal_list = DynamicArray::<vk::Semaphore, 4>::new();
         let mut local_signal_values = DynamicArray::<u64, 4>::new();
@@ -294,8 +294,12 @@ impl Device {
         }
     }
 
-    pub fn present(&self, context: &dyn HasBaseContext, surface: &Surface) -> VulkanResult<bool> {
-        let context = context.base_context();
+    pub fn present<Context: AsRef<TransferContext>>(
+        &self,
+        context: &Context,
+        surface: &Surface,
+    ) -> VulkanResult<bool> {
+        let context = context.as_ref().base_context();
 
         let wait_semaphores = [surface.can_present_semaphores[surface.current_image as usize]];
         let swapchains = [surface.swapchain];
