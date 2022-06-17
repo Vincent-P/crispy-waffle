@@ -98,6 +98,10 @@ impl<T: std::fmt::Debug> Pool<T> {
         self.length
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
+    }
+
     pub fn with_capacity(capacity: u32) -> Self {
         let mut pool = Pool {
             values: Vec::with_capacity(capacity as usize),

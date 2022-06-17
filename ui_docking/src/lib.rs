@@ -270,7 +270,7 @@ impl Docking {
         previous_area_handle: Handle<Area>,
         split_direction: SplitDirection,
         new_child_handle: Handle<Area>,
-    ) {
+    ) -> Handle<Area> {
         // Copy the previous area
         let previous_area = area_pool.get(previous_area_handle).clone();
         let previous_parent = previous_area.parent();
@@ -307,6 +307,8 @@ impl Docking {
 
         *area_pool.get_mut(new_child_handle).parent_mut() = previous_area_handle;
         *area_pool.get_mut(new_old_area_handle).parent_mut() = previous_area_handle;
+
+        new_old_area_handle
     }
 
     // Propagate rect to children, and select tabview if none is selected
@@ -413,7 +415,6 @@ impl Docking {
                 }
 
                 DockingEvent::Split(direction, i_dropped_tab, container_handle) => {
-                    let previous_tab_area = self.tabviews[*i_dropped_tab].area;
                     Self::remove_tabview(&mut self.area_pool, &mut self.tabviews, *i_dropped_tab);
                     let new_container = self.area_pool.add(Area::Container(AreaContainer {
                         selected: Some(0),
@@ -429,7 +430,7 @@ impl Docking {
                         new_container,
                     );
 
-                    Self::split_area(
+                    let previous_container = Self::split_area(
                         &mut self.area_pool,
                         &mut self.tabviews,
                         *container_handle,
@@ -437,11 +438,10 @@ impl Docking {
                         new_container,
                     );
 
-                    // TODO: does not work :)
                     Self::remove_empty_areas(
                         &mut self.area_pool,
                         &mut self.tabviews,
-                        new_container,
+                        previous_container,
                     );
                 }
 
@@ -811,13 +811,6 @@ impl AreaContainer {
 }
 
 impl Area {
-    pub fn splitter(&self) -> Option<&AreaSplitter> {
-        match &self {
-            Self::Splitter(inner) => Some(inner),
-            _ => None,
-        }
-    }
-
     pub fn splitter_mut(&mut self) -> Option<&mut AreaSplitter> {
         match self {
             Self::Splitter(inner) => Some(inner),
