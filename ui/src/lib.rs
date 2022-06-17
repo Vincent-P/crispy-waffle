@@ -1,7 +1,7 @@
+mod widgets;
+
 use drawer2d::{drawer::*, font::*, rect::*};
 use std::rc::Rc;
-
-mod widgets;
 pub use widgets::*;
 
 const MAX_CONTAINER_DEPTH: usize = 64;

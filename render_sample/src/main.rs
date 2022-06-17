@@ -2,17 +2,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use anyhow::Result;
+use drawer2d::{drawer::*, font::*, glyph_cache::GlyphEvent, rect::*};
 use exo::{dynamic_array::DynamicArray, pool::Handle};
 use raw_window_handle::HasRawWindowHandle;
-use std::time::{Duration, Instant};
-use std::{ffi::CStr, mem::size_of, os::raw::c_char, path::PathBuf, rc::Rc};
-use winit::{
-    event::{ElementState, Event, MouseButton, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    platform::run_return::EventLoopExtRunReturn,
-    window::WindowBuilder,
-};
-
 use render::{
     bindings,
     ring_buffer::*,
@@ -22,8 +14,13 @@ use render::{
         error::VulkanResult,
     },
 };
-
-use drawer2d::{drawer::*, font::*, glyph_cache::GlyphEvent, rect::*};
+use std::{ffi::CStr, mem::size_of, os::raw::c_char, path::PathBuf, rc::Rc, time::Instant};
+use winit::{
+    event::{ElementState, Event, MouseButton, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    platform::run_return::EventLoopExtRunReturn,
+    window::WindowBuilder,
+};
 
 mod profile {
     #[cfg(feature = "optick")]
@@ -105,13 +102,14 @@ mod custom_ui {
             pub rect: Rect,
         }
 
-        fn TurboColormap(x: f32) -> [f32; 3] {
-            const kRedVec4: [f32; 4] = [0.13572138, 4.61539260, -42.66032258, 132.13108234];
-            const kGreenVec4: [f32; 4] = [0.09140261, 2.19418839, 4.84296658, -14.18503333];
-            const kBlueVec4: [f32; 4] = [0.10667330, 12.64194608, -60.58204836, 110.36276771];
-            const kRedVec2: [f32; 2] = [-152.94239396, 59.28637943];
-            const kGreenVec2: [f32; 2] = [4.27729857, 2.82956604];
-            const kBlueVec2: [f32; 2] = [-89.90310912, 27.34824973];
+        #[allow(clippy::excessive_precision)]
+        fn turbo_colormap(x: f32) -> [f32; 3] {
+            const RED_VEC4: [f32; 4] = [0.13572138, 4.61539260, -42.66032258, 132.13108234];
+            const GREEN_VEC4: [f32; 4] = [0.09140261, 2.19418839, 4.84296658, -14.18503333];
+            const BLUE_VEC4: [f32; 4] = [0.10667330, 12.64194608, -60.58204836, 110.36276771];
+            const RED_VEC2: [f32; 2] = [-152.94239396, 59.28637943];
+            const GREEN_VEC2: [f32; 2] = [4.27729857, 2.82956604];
+            const BLUE_VEC2: [f32; 2] = [-89.90310912, 27.34824973];
             let dot4 =
                 |a: [f32; 4], b: [f32; 4]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
             let dot2 = |a: [f32; 2], b: [f32; 2]| a[0] * b[0] + a[1] * b[1];
@@ -121,9 +119,9 @@ mod custom_ui {
             let v2 = [v4[2] * v4[2], v4[3] * v4[2]];
 
             [
-                dot4(v4, kRedVec4) + dot2(v2, kRedVec2),
-                dot4(v4, kGreenVec4) + dot2(v2, kGreenVec2),
-                dot4(v4, kBlueVec4) + dot2(v2, kBlueVec2),
+                dot4(v4, RED_VEC4) + dot2(v2, RED_VEC2),
+                dot4(v4, GREEN_VEC4) + dot2(v2, GREEN_VEC2),
+                dot4(v4, BLUE_VEC4) + dot2(v2, BLUE_VEC2),
             ]
         }
 
@@ -151,14 +149,14 @@ mod custom_ui {
                 let height_factor = (dt.log2() - (1.0 / target_fps).log2())
                     / ((max_frame_time).log2() - (1.0 / target_fps).log2());
                 let rect_height = height_factor.clamp(0.1, 1.0) * widget.rect.size[1];
-                let rect_color = TurboColormap(dt / (1.0 / 120.0));
+                let rect_color = turbo_colormap(dt / (1.0 / 120.0));
                 let rect_color =
                     ColorU32::from_f32(rect_color[0], rect_color[1], rect_color[2], 1.0);
 
                 let rect_width = rect_width.max(1.0);
                 let rect_height = rect_height.max(1.0);
 
-                cursor[0] = cursor[0] - rect_width;
+                cursor[0] -= rect_width;
 
                 let rect = Rect {
                     pos: [cursor[0].ceil(), (cursor[1] - rect_height).ceil()],
@@ -897,14 +895,9 @@ fn main() -> Result<()> {
             } if window_id == window.id() => *control_flow = ControlFlow::Exit,
 
             Event::WindowEvent {
-                event:
-                    WindowEvent::CursorMoved {
-                        device_id,
-                        position,
-                        ..
-                    },
+                event: WindowEvent::CursorMoved { position, .. },
                 window_id,
-            } => {
+            } if window_id == window.id() => {
                 let mouse_position: winit::dpi::LogicalPosition<f32> = position.to_logical(1.0);
                 app.ui
                     .set_mouse_position([mouse_position.x, mouse_position.y]);
@@ -913,7 +906,7 @@ fn main() -> Result<()> {
             Event::WindowEvent {
                 event: WindowEvent::MouseInput { state, button, .. },
                 window_id,
-            } => {
+            } if window_id == window.id() => {
                 if button == MouseButton::Left {
                     app.ui
                         .set_left_mouse_button_pressed(state == ElementState::Pressed);
@@ -923,7 +916,7 @@ fn main() -> Result<()> {
             Event::WindowEvent {
                 event: WindowEvent::ScaleFactorChanged { scale_factor, .. },
                 window_id,
-            } => {
+            } if window_id == window.id() => {
                 app.ui.theme.font_size = app.font_size * (scale_factor as f32);
             }
 

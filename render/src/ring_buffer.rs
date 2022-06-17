@@ -13,7 +13,6 @@ pub struct RingBufferSpec {
 }
 
 pub struct RingBuffer {
-    spec: RingBufferSpec,
     pub buffer: Handle<Buffer>,
     memory_buffer: *mut [u8],
     cursor: usize,
@@ -33,7 +32,6 @@ impl RingBuffer {
         })?;
 
         Ok(Self {
-            spec,
             buffer,
             memory_buffer: device.map_buffer(buffer),
             cursor: 0,

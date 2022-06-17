@@ -42,5 +42,5 @@ fn main() {
     compile_shader("ui.vert", &out_dir);
     compile_shader("ui.frag", &out_dir);
 
-    copy_resource("iAWriterQuattroS-Regular.ttf", &out_dir);
+    copy_resource("iAWriterQuattroS-Regular.ttf", &out_dir).unwrap();
 }

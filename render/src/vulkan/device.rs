@@ -373,19 +373,18 @@ impl Device {
         // Hack for borrow checker
         let mut writes_indirection: Vec<(usize, usize, bool)> = vec![];
 
-        let descriptor_types = [
+        let descriptor_types: [vk::DescriptorType; BINDLESS_SETS] = [
             vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
             vk::DescriptorType::STORAGE_IMAGE,
             vk::DescriptorType::STORAGE_BUFFER,
         ];
 
-        for i_set in 0..BINDLESS_SETS {
-            let image_layout =
-                if descriptor_types[i_set] == vk::DescriptorType::COMBINED_IMAGE_SAMPLER {
-                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-                } else {
-                    vk::ImageLayout::GENERAL
-                };
+        for (i_set, descriptor_type) in descriptor_types.into_iter().enumerate() {
+            let image_layout = if descriptor_type == vk::DescriptorType::COMBINED_IMAGE_SAMPLER {
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+            } else {
+                vk::ImageLayout::GENERAL
+            };
 
             for to_bind in &bindless_set.pending_binds[i_set] {
                 assert!(*to_bind < std::u32::MAX as usize);
@@ -396,6 +395,7 @@ impl Device {
                         .dst_array_element(*to_bind as u32)
                         .descriptor_type(descriptor_types[i_set]),
                 );
+
                 match i_set {
                     PER_SAMPLER => {
                         let image_handle = bindless_set.sampler_images[*to_bind];
