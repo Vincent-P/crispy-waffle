@@ -158,6 +158,8 @@ impl Docking {
                 }
 
                 DockingEvent::Split(direction, i_dropped_tab, container_handle) => {
+                    let previous_tab_container = self.tabviews[*i_dropped_tab].area;
+
                     Self::remove_tabview(&mut self.area_pool, &mut self.tabviews, *i_dropped_tab);
                     let new_container = self.area_pool.add(Area::Container(AreaContainer {
                         selected: Some(0),
@@ -173,7 +175,7 @@ impl Docking {
                         new_container,
                     );
 
-                    let previous_container = Self::split_area(
+                    let previous_splitted_container = Self::split_area(
                         &mut self.area_pool,
                         &mut self.tabviews,
                         *container_handle,
@@ -184,7 +186,13 @@ impl Docking {
                     Self::remove_empty_areas(
                         &mut self.area_pool,
                         &mut self.tabviews,
-                        previous_container,
+                        previous_tab_container,
+                    );
+
+                    Self::remove_empty_areas(
+                        &mut self.area_pool,
+                        &mut self.tabviews,
+                        previous_splitted_container,
                     );
                 }
 
