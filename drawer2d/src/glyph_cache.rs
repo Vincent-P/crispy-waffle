@@ -207,7 +207,7 @@ impl GlyphCache {
         (atlas_pos, &face_glyph_entries.last().unwrap().image)
     }
 
-    pub fn process_events<T>(&mut self, mut callback: T)
+    pub fn process_events<T>(&self, mut callback: T)
     where
         T: FnMut(&GlyphEvent, Option<&GlyphImage>, Option<[i32; 2]>),
     {
@@ -238,6 +238,9 @@ impl GlyphCache {
 
             callback(event, glyph_image, glyph_atlas_pos);
         }
+    }
+
+    pub fn clear_events(&mut self) {
         self.events.clear();
     }
 

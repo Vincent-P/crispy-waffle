@@ -79,13 +79,13 @@ pub struct Pool<T> {
     length: u32,
 }
 
-impl<T: std::fmt::Debug> Default for Pool<T> {
+impl<T> Default for Pool<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: std::fmt::Debug> Pool<T> {
+impl<T> Pool<T> {
     pub fn new() -> Self {
         Pool {
             values: vec![],

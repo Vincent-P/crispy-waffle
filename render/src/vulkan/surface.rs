@@ -108,7 +108,7 @@ impl Surface {
         Ok(surface)
     }
 
-    pub fn destroy(mut self, instance: &Instance, device: &mut Device) {
+    pub fn destroy(&mut self, instance: &Instance, device: &mut Device) {
         self.destroy_swapchain(device);
         unsafe {
             instance.instance.destroy_surface_khr(self.surface, None);
@@ -250,5 +250,9 @@ impl Surface {
     ) -> VulkanResult<()> {
         self.destroy_swapchain(device);
         self.create_swapchain(instance, device, physical_device)
+    }
+
+    pub fn current_image(&self) -> Handle<Image> {
+        self.images[self.current_image as usize]
     }
 }

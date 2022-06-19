@@ -225,6 +225,12 @@ impl AsMut<TransferContext> for ComputeContext {
     }
 }
 
+impl AsMut<ComputeContext> for ComputeContext {
+    fn as_mut(&mut self) -> &mut ComputeContext {
+        self
+    }
+}
+
 impl ComputeContext {
     pub fn base_context(&self) -> &BaseContext {
         &self.base.base
@@ -232,6 +238,14 @@ impl ComputeContext {
 
     pub fn base_context_mut(&mut self) -> &mut BaseContext {
         &mut self.base.base
+    }
+
+    pub fn transfer(&self) -> &TransferContext {
+        &self.base
+    }
+
+    pub fn transfer_mut(&mut self) -> &mut TransferContext {
+        &mut self.base
     }
 
     pub fn bind_uniform_set(
@@ -272,6 +286,12 @@ impl ComputeContext {
 
 pub struct GraphicsContext {
     base: ComputeContext,
+}
+
+impl AsMut<GraphicsContext> for GraphicsContext {
+    fn as_mut(&mut self) -> &mut GraphicsContext {
+        self
+    }
 }
 
 impl AsRef<ComputeContext> for GraphicsContext {

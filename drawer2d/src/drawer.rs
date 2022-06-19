@@ -95,6 +95,7 @@ impl<'a> Drawer<'a> {
     pub fn clear(&mut self) {
         self.vertex_byte_offset = 0;
         self.index_offset = 0;
+        self.glyph_cache.clear_events();
     }
 
     pub fn get_vertices(&self) -> &[u8] {
@@ -114,7 +115,11 @@ impl<'a> Drawer<'a> {
         self.index_offset
     }
 
-    pub fn get_glyph_cache_mut(&mut self) -> &mut GlyphCache {
+    pub fn glyph_cache(&self) -> &GlyphCache {
+        &self.glyph_cache
+    }
+
+    pub fn glyph_cache_mut(&mut self) -> &mut GlyphCache {
         &mut self.glyph_cache
     }
 

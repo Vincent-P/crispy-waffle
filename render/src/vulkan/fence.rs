@@ -37,7 +37,7 @@ impl Device {
         })
     }
 
-    pub fn destroy_fence(&self, fence: Fence) {
+    pub fn destroy_fence(&self, fence: &Fence) {
         unsafe {
             self.device
                 .destroy_semaphore(fence.timeline_semaphore, None);

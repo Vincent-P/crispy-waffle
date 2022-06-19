@@ -1,19 +1,6 @@
 #![cfg_attr(debug_assertions, windows_subsystem = "console")]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use anyhow::Result;
-use drawer2d::{drawer::*, font::*, glyph_cache::GlyphEvent, rect::*};
-use exo::{dynamic_array::DynamicArray, pool::Handle};
-use raw_window_handle::HasRawWindowHandle;
-use render::{bindings, ring_buffer::*, vk, vulkan, vulkan::error::VulkanResult};
-use std::{ffi::CStr, mem::size_of, os::raw::c_char, path::PathBuf, rc::Rc, time::Instant};
-use winit::{
-    event::{ElementState, Event, MouseButton, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    platform::run_return::EventLoopExtRunReturn,
-    window::WindowBuilder,
-};
-
 mod profile {
     #[cfg(feature = "optick")]
     pub fn init() {}
@@ -161,6 +148,233 @@ mod custom_ui {
     }
 }
 
+mod custom_render {
+    use drawer2d::drawer::Drawer;
+    use exo::{dynamic_array::DynamicArray, pool::Handle};
+    use render::{bindings, render_graph::graph::*, vk, vulkan};
+    use std::{mem::size_of, path::PathBuf, rc::Rc};
+
+    pub struct UiPass {
+        pub glyph_atlas: Handle<vulkan::Image>,
+        ui_program: Handle<vulkan::GraphicsProgram>,
+    }
+
+    impl UiPass {
+        pub fn new(
+            device: &mut vulkan::Device,
+            surface_format: vk::Format,
+            glyph_atlas_size: [i32; 2],
+        ) -> vulkan::VulkanResult<Self> {
+            let mut shader_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
+            shader_dir.push("dummy_file");
+
+            let ui_gfx_state = vulkan::GraphicsState {
+                vertex_shader: device
+                    .create_shader(shader_dir.with_file_name("ui.vert.spv"))
+                    .unwrap(),
+                fragment_shader: device
+                    .create_shader(shader_dir.with_file_name("ui.frag.spv"))
+                    .unwrap(),
+                attachments_format: vulkan::FramebufferFormat {
+                    attachment_formats: DynamicArray::from([surface_format]),
+                    ..Default::default()
+                },
+            };
+
+            let ui_program = device.create_graphics_program(ui_gfx_state)?;
+            device.compile_graphics_program(
+                ui_program,
+                vulkan::RenderState {
+                    depth: vulkan::DepthState {
+                        test: None,
+                        enable_write: false,
+                        bias: 0.0,
+                    },
+                    rasterization: vulkan::RasterizationState {
+                        enable_conservative_rasterization: false,
+                        culling: false,
+                    },
+                    input_assembly: vulkan::InputAssemblyState {
+                        topology: vulkan::PrimitiveTopology::TriangleList,
+                    },
+                    alpha_blending: true,
+                },
+            )?;
+
+            let glyph_atlas = device.create_image(vulkan::ImageSpec {
+                size: [glyph_atlas_size[0], glyph_atlas_size[1], 1],
+                format: vk::Format::R8_UNORM,
+                ..Default::default()
+            })?;
+
+            Ok(Self {
+                glyph_atlas,
+                ui_program,
+            })
+        }
+
+        pub fn register_graph(
+            &self,
+            graph: &mut RenderGraph,
+            output: Handle<TextureDesc>,
+            drawer: &Rc<Drawer<'static>>,
+        ) {
+            let glyph_atlas = self.glyph_atlas;
+            let ui_program = self.ui_program;
+            let drawer = Rc::clone(drawer);
+            let drawer2 = Rc::clone(&drawer);
+
+            let execute = move |_graph: &mut RenderGraph,
+                                api: &mut PassApi,
+                                ctx: &mut vulkan::ComputeContext|
+                  -> vulkan::VulkanResult<()> {
+                use drawer2d::glyph_cache::GlyphEvent;
+                let drawer = Rc::clone(&drawer);
+
+                let mut glyphs_to_upload: Vec<vulkan::BufferImageCopy> = Vec::with_capacity(32);
+                drawer
+                    .glyph_cache()
+                    .process_events(|cache_event, glyph_image, glyph_atlas_pos| {
+                        // Copy new glyphs to the upload buffer
+                        if let GlyphEvent::New(_, _) = cache_event {
+                            if let Some(atlas_pos) = glyph_atlas_pos {
+                                let image = glyph_image.unwrap();
+                                let (slice, offset) =
+                                    api.upload_buffer.allocate(image.data.len(), 256);
+                                unsafe {
+                                    (*slice).copy_from_slice(&image.data);
+                                }
+
+                                let image_offset = [atlas_pos[0], atlas_pos[1], 0];
+
+                                glyphs_to_upload.push(vulkan::BufferImageCopy {
+                                    buffer_offset: offset as u64,
+                                    buffer_size: image.data.len() as u32,
+                                    image_offset,
+                                    image_extent: [
+                                        image.placement.width as u32,
+                                        image.placement.height as u32,
+                                        1,
+                                    ],
+                                });
+                            }
+                        }
+                    });
+                if !glyphs_to_upload.is_empty() {
+                    ctx.base_context().barrier(
+                        api.device,
+                        glyph_atlas,
+                        vulkan::ImageState::TransferDst,
+                    );
+                    ctx.transfer_mut().copy_buffer_to_image(
+                        api.device,
+                        api.upload_buffer.buffer,
+                        glyph_atlas,
+                        &glyphs_to_upload,
+                    );
+                    ctx.base_context().barrier(
+                        api.device,
+                        glyph_atlas,
+                        vulkan::ImageState::GraphicsShaderRead,
+                    );
+                }
+
+                Ok(())
+            };
+            graph.raw_pass(execute);
+
+            let drawer = drawer2;
+            let execute = move |graph: &mut RenderGraph,
+                                api: &mut PassApi,
+                                ctx: &mut vulkan::GraphicsContext| {
+                let vertices = drawer.get_vertices();
+                let (slice, vertices_offset) = api
+                    .dynamic_vertex_buffer
+                    .allocate(vertices.len(), Drawer::get_primitive_alignment());
+                unsafe {
+                    (*slice).copy_from_slice(vertices);
+                }
+                let indices = drawer.get_indices();
+                let indices_byte_length = indices.len() * size_of::<u32>();
+                let (slice, indices_offset) = api
+                    .dynamic_index_buffer
+                    .allocate(indices_byte_length, size_of::<u32>());
+                unsafe {
+                    let gpu_indices = std::slice::from_raw_parts_mut(
+                        (*slice).as_mut_ptr() as *mut u32,
+                        (*slice).len() / size_of::<u32>(),
+                    );
+                    gpu_indices.copy_from_slice(indices);
+                }
+                #[repr(C, packed)]
+                struct Options {
+                    pub scale: [f32; 2],
+                    pub translation: [f32; 2],
+                    pub vertices_descriptor_index: u32,
+                    pub primitive_bytes_offset: u32,
+                    pub glyph_atlas_descriptor: u32,
+                }
+
+                let options = bindings::bind_shader_options(
+                    api.device,
+                    api.uniform_buffer,
+                    &ctx,
+                    size_of::<Options>(),
+                )
+                .unwrap();
+
+                let output_size = graph.image_size(output);
+                let glyph_atlas_descriptor =
+                    api.device.images.get(glyph_atlas).full_view.sampled_idx;
+                unsafe {
+                    let p_options =
+                        std::slice::from_raw_parts_mut((*options).as_ptr() as *mut Options, 1);
+                    p_options[0] = Options {
+                        scale: [2.0 / (output_size[0] as f32), 2.0 / (output_size[1] as f32)],
+                        translation: [-1.0, -1.0],
+                        vertices_descriptor_index: api
+                            .device
+                            .buffers
+                            .get(api.dynamic_vertex_buffer.buffer)
+                            .storage_idx,
+                        primitive_bytes_offset: vertices_offset,
+                        glyph_atlas_descriptor,
+                    };
+                }
+                ctx.bind_index_buffer(
+                    api.device,
+                    api.dynamic_index_buffer.buffer,
+                    vk::IndexType::UINT32,
+                    indices_offset as usize,
+                );
+                ctx.bind_graphics_pipeline(api.device, ui_program, 0);
+                ctx.draw_indexed(
+                    api.device,
+                    vulkan::DrawIndexedOptions {
+                        vertex_count: indices.len() as u32,
+                        ..Default::default()
+                    },
+                );
+            };
+
+            graph.graphics_pass(output, execute);
+        }
+    }
+}
+
+use anyhow::Result;
+use drawer2d::{drawer::*, font::*, rect::*};
+use exo::dynamic_array::DynamicArray;
+use raw_window_handle::HasRawWindowHandle;
+use render::{render_graph, ring_buffer::*, vk, vulkan, vulkan::error::VulkanResult};
+use std::{cell::RefCell, ffi::CStr, os::raw::c_char, path::PathBuf, rc::Rc, time::Instant};
+use winit::{
+    event::{ElementState, Event, MouseButton, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    platform::run_return::EventLoopExtRunReturn,
+    window::WindowBuilder,
+};
+
 const FRAME_QUEUE_LENGTH: usize = 2;
 static mut DRAWER_VERTEX_MEMORY: [u8; 64 << 10] = [0; 64 << 10];
 static mut DRAWER_INDEX_MEMORY: [u32; 8 << 10] = [0; 8 << 10];
@@ -171,23 +385,20 @@ struct Renderer {
     physical_devices: DynamicArray<vulkan::PhysicalDevice, { vulkan::MAX_PHYSICAL_DEVICES }>,
     device: vulkan::Device,
     i_device: usize,
-    surface: vulkan::Surface,
     context_pools: [vulkan::ContextPool; FRAME_QUEUE_LENGTH],
-    fence: vulkan::Fence,
-    i_frame: usize,
-    framebuffers: DynamicArray<Handle<vulkan::Framebuffer>, { vulkan::MAX_SWAPCHAIN_IMAGES }>,
-    ui_program: Handle<vulkan::GraphicsProgram>,
     uniform_buffer: RingBuffer,
     dynamic_vertex_buffer: RingBuffer,
     dynamic_index_buffer: RingBuffer,
     upload_buffer: RingBuffer,
-    glyph_atlas: Handle<vulkan::Image>,
+    render_graph: render_graph::graph::RenderGraph,
+    ui_node: custom_render::UiPass,
+    swapchain_node: Rc<RefCell<render_graph::builtins::SwapchainPass>>,
+    frame_count: usize,
 }
 
 impl Renderer {
     pub fn new<WindowHandle: HasRawWindowHandle>(
         window_handle: &WindowHandle,
-        shader_dir: PathBuf,
     ) -> vulkan::VulkanResult<Self> {
         let instance = vulkan::Instance::new(vulkan::InstanceSpec {
             enable_validation: cfg!(debug_assertions),
@@ -234,58 +445,15 @@ impl Renderer {
         )?;
 
         let surface = vulkan::Surface::new(&instance, &mut device, physical_device, window_handle)?;
-
-        let ui_gfx_state = vulkan::GraphicsState {
-            vertex_shader: device
-                .create_shader(shader_dir.with_file_name("ui.vert.spv"))
-                .unwrap(),
-            fragment_shader: device
-                .create_shader(shader_dir.with_file_name("ui.frag.spv"))
-                .unwrap(),
-            attachments_format: vulkan::FramebufferFormat {
-                attachment_formats: DynamicArray::from([surface.format.format]),
-                ..Default::default()
-            },
-        };
-
-        let ui_program = device.create_graphics_program(ui_gfx_state)?;
-        device.compile_graphics_program(
-            ui_program,
-            vulkan::RenderState {
-                depth: vulkan::DepthState {
-                    test: None,
-                    enable_write: false,
-                    bias: 0.0,
-                },
-                rasterization: vulkan::RasterizationState {
-                    enable_conservative_rasterization: false,
-                    culling: false,
-                },
-                input_assembly: vulkan::InputAssemblyState {
-                    topology: vulkan::PrimitiveTopology::TriangleList,
-                },
-                alpha_blending: true,
-            },
-        )?;
+        let surface_format = surface.format.format;
+        let swapchain_node = Rc::new(RefCell::new(render_graph::builtins::SwapchainPass {
+            i_frame: 0,
+            fence: device.create_fence()?,
+            surface,
+        }));
 
         let context_pools: [vulkan::ContextPool; FRAME_QUEUE_LENGTH] =
             [device.create_context_pool()?, device.create_context_pool()?];
-
-        let i_frame: usize = 0;
-        let fence = device.create_fence()?;
-
-        let mut framebuffers =
-            DynamicArray::<Handle<vulkan::Framebuffer>, { vulkan::MAX_SWAPCHAIN_IMAGES }>::new();
-        for i_image in 0..surface.images.len() {
-            framebuffers.push(device.create_framebuffer(
-                &vulkan::FramebufferFormat {
-                    size: [surface.size[0], surface.size[1], 1],
-                    ..Default::default()
-                },
-                &[surface.images[i_image]],
-                Handle::<vulkan::Image>::invalid(),
-            )?);
-        }
 
         let uniform_buffer = RingBuffer::new(
             &mut device,
@@ -327,95 +495,81 @@ impl Renderer {
             },
         )?;
 
-        let glyph_atlas = device.create_image(vulkan::ImageSpec {
-            size: [GLYPH_ATLAS_RESOLUTION, GLYPH_ATLAS_RESOLUTION, 1],
-            format: vk::Format::R8_UNORM,
-            ..Default::default()
-        })?;
+        let render_graph = render_graph::graph::RenderGraph::new();
+        let ui_node = custom_render::UiPass::new(
+            &mut device,
+            surface_format,
+            [GLYPH_ATLAS_RESOLUTION, GLYPH_ATLAS_RESOLUTION],
+        )?;
 
         Ok(Self {
             instance,
             physical_devices,
             device,
             i_device: i_selected,
-            surface,
             context_pools,
-            fence,
-            i_frame,
-            framebuffers,
-            ui_program,
             uniform_buffer,
             dynamic_vertex_buffer,
             dynamic_index_buffer,
             upload_buffer,
-            glyph_atlas,
+            ui_node,
+            render_graph,
+            swapchain_node,
+            frame_count: 0,
         })
     }
 
     pub fn destroy(mut self) {
         self.device.wait_idle().unwrap();
 
-        for framebuffer in &self.framebuffers {
-            self.device.destroy_framebuffer(*framebuffer);
-        }
-
-        self.device.destroy_fence(self.fence);
+        self.device
+            .destroy_fence(&self.swapchain_node.borrow().fence);
         for context_pool in self.context_pools {
             self.device.destroy_context_pool(context_pool);
         }
 
-        self.surface.destroy(&self.instance, &mut self.device);
-
-        self.device.destroy_program(self.ui_program);
-        // device.destroy_shader(ui_vertex);
-        // device.destroy_shader(ui_frag);
+        self.swapchain_node
+            .borrow_mut()
+            .surface
+            .destroy(&self.instance, &mut self.device);
 
         self.device.destroy();
         self.instance.destroy();
     }
 
-    pub fn get_glyph_atlas_descriptor(&self) -> u32 {
-        let image = self.device.images.get(self.glyph_atlas);
-        image.full_view.sampled_idx
-    }
-
-    pub fn draw(&mut self, mut drawer: Option<&mut Drawer>) -> VulkanResult<()> {
+    pub fn render(&mut self, drawer: Option<&Rc<Drawer<'static>>>) -> VulkanResult<()> {
+        use render_graph::builtins::SwapchainPass;
         profile::next_frame();
 
-        let current_frame = self.i_frame % FRAME_QUEUE_LENGTH;
+        let i_frame = {
+            let b = self.swapchain_node.borrow();
+            b.i_frame
+        };
+
+        let swapchain_output =
+            SwapchainPass::acquire_next_image(&self.swapchain_node, &mut self.render_graph);
+
+        if let Some(drawer) = drawer {
+            self.ui_node
+                .register_graph(&mut self.render_graph, swapchain_output, drawer);
+        }
+
+        SwapchainPass::present(&self.swapchain_node, &mut self.render_graph);
+
+        let current_frame = i_frame % FRAME_QUEUE_LENGTH;
         let context_pool = &mut self.context_pools[current_frame];
 
-        let wait_value: u64 = if self.i_frame < FRAME_QUEUE_LENGTH {
+        let wait_value: u64 = if i_frame < FRAME_QUEUE_LENGTH {
             0
         } else {
-            (self.i_frame - FRAME_QUEUE_LENGTH + 1) as u64
+            (i_frame - FRAME_QUEUE_LENGTH + 1) as u64
         };
-        self.device.wait_for_fences(&[&self.fence], &[wait_value])?;
+        {
+            let fence = &self.swapchain_node.borrow().fence;
+            self.device.wait_for_fences(&[fence], &[wait_value])?;
+        }
 
         self.device.reset_context_pool(context_pool)?;
-        let mut outdated = self.device.acquire_next_swapchain(&mut self.surface)?;
-        while outdated {
-            profile::scope!("resize");
-            self.device.wait_idle()?;
-            self.surface.recreate_swapchain(
-                &self.instance,
-                &mut self.device,
-                &mut self.physical_devices[self.i_device],
-            )?;
-
-            for i_image in 0..self.surface.images.len() {
-                self.device.destroy_framebuffer(self.framebuffers[i_image]);
-                self.framebuffers[i_image] = self.device.create_framebuffer(
-                    &vulkan::FramebufferFormat {
-                        size: [self.surface.size[0], self.surface.size[1], 1],
-                        ..Default::default()
-                    },
-                    &[self.surface.images[i_image]],
-                    Handle::<vulkan::Image>::invalid(),
-                )?;
-            }
-            outdated = self.device.acquire_next_swapchain(&mut self.surface)?;
-        }
 
         self.device.update_bindless_set();
         self.uniform_buffer.start_frame();
@@ -423,201 +577,35 @@ impl Renderer {
         self.dynamic_index_buffer.start_frame();
         self.upload_buffer.start_frame();
 
-        let mut ctx = self.device.get_graphics_context(context_pool)?;
-        {
-            profile::scope!("command recording");
-            ctx.base().begin(&self.device)?;
-            ctx.base_mut().wait_for_acquired(
-                &self.surface,
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            );
+        let pass_api = render_graph::graph::PassApi {
+            instance: &self.instance,
+            physical_devices: &mut self.physical_devices,
+            i_device: self.i_device,
+            device: &mut self.device,
+            uniform_buffer: &mut self.uniform_buffer,
+            dynamic_vertex_buffer: &mut self.dynamic_vertex_buffer,
+            dynamic_index_buffer: &mut self.dynamic_index_buffer,
+            upload_buffer: &mut self.upload_buffer,
+        };
 
-            if self.i_frame == 0 {
-                ctx.base().barrier(
-                    &mut self.device,
-                    self.glyph_atlas,
-                    vulkan::ImageState::TransferDst,
-                );
-                ctx.transfer().clear_image(
-                    &self.device,
-                    self.glyph_atlas,
-                    vulkan::ClearColorValue::Float32([0.0, 0.0, 0.0, 1.0]),
-                );
-            }
-
-            ctx.base().barrier(
-                &mut self.device,
-                self.surface.images[self.surface.current_image as usize],
-                vulkan::ImageState::ColorAttachment,
-            );
-            if let Some(ref mut drawer) = drawer {
-                let mut glyphs_to_upload: Vec<vulkan::BufferImageCopy> = Vec::with_capacity(32);
-                drawer.get_glyph_cache_mut().process_events(
-                    |cache_event, glyph_image, glyph_atlas_pos| {
-                        // Copy new glyphs to the upload buffer
-                        if let GlyphEvent::New(_, _) = cache_event {
-                            if let Some(atlas_pos) = glyph_atlas_pos {
-                                let image = glyph_image.unwrap();
-                                let (slice, offset) =
-                                    self.upload_buffer.allocate(image.data.len(), 256);
-                                unsafe {
-                                    (*slice).copy_from_slice(&image.data);
-                                }
-
-                                let image_offset = [atlas_pos[0], atlas_pos[1], 0];
-
-                                glyphs_to_upload.push(vulkan::BufferImageCopy {
-                                    buffer_offset: offset as u64,
-                                    buffer_size: image.data.len() as u32,
-                                    image_offset,
-                                    image_extent: [
-                                        image.placement.width as u32,
-                                        image.placement.height as u32,
-                                        1,
-                                    ],
-                                });
-                            }
-                        }
-                    },
-                );
-                if !glyphs_to_upload.is_empty() {
-                    ctx.base().barrier(
-                        &mut self.device,
-                        self.glyph_atlas,
-                        vulkan::ImageState::TransferDst,
-                    );
-                    ctx.transfer_mut().copy_buffer_to_image(
-                        &self.device,
-                        self.upload_buffer.buffer,
-                        self.glyph_atlas,
-                        &glyphs_to_upload,
-                    );
-                    ctx.base().barrier(
-                        &mut self.device,
-                        self.glyph_atlas,
-                        vulkan::ImageState::GraphicsShaderRead,
-                    );
-                }
-            }
-            ctx.begin_pass(
-                &mut self.device,
-                self.framebuffers[self.surface.current_image as usize],
-                &[vulkan::LoadOp::ClearColor(
-                    vulkan::ClearColorValue::Float32([0.0, 0.0, 0.0, 1.0]),
-                )],
-            )?;
-            ctx.set_viewport(
-                &self.device,
-                vk::ViewportBuilder::new()
-                    .width(self.surface.size[0] as f32)
-                    .height(self.surface.size[1] as f32)
-                    .min_depth(0.0)
-                    .max_depth(1.0),
-            );
-            ctx.set_scissor(
-                &self.device,
-                vk::Rect2DBuilder::new().extent(
-                    *vk::Extent2DBuilder::new()
-                        .width(self.surface.size[0] as u32)
-                        .height(self.surface.size[1] as u32),
-                ),
-            );
-            if let Some(drawer) = drawer {
-                let vertices = drawer.get_vertices();
-                let (slice, vertices_offset) = self
-                    .dynamic_vertex_buffer
-                    .allocate(vertices.len(), Drawer::get_primitive_alignment());
-                unsafe {
-                    profile::scope!("copy drawer vertices");
-                    (*slice).copy_from_slice(vertices);
-                }
-                let indices = drawer.get_indices();
-                let indices_byte_length = indices.len() * size_of::<u32>();
-                let (slice, indices_offset) = self
-                    .dynamic_index_buffer
-                    .allocate(indices_byte_length, size_of::<u32>());
-                unsafe {
-                    profile::scope!("copy drawer indices");
-                    let gpu_indices = std::slice::from_raw_parts_mut(
-                        (*slice).as_mut_ptr() as *mut u32,
-                        (*slice).len() / size_of::<u32>(),
-                    );
-                    gpu_indices.copy_from_slice(indices);
-                }
-                #[repr(C, packed)]
-                struct Options {
-                    pub scale: [f32; 2],
-                    pub translation: [f32; 2],
-                    pub vertices_descriptor_index: u32,
-                    pub primitive_bytes_offset: u32,
-                    pub glyph_atlas_descriptor: u32,
-                }
-
-                let options = bindings::bind_shader_options(
-                    &mut self.device,
-                    &mut self.uniform_buffer,
-                    &ctx,
-                    size_of::<Options>(),
-                )?;
-                unsafe {
-                    let p_options =
-                        std::slice::from_raw_parts_mut((*options).as_ptr() as *mut Options, 1);
-                    p_options[0] = Options {
-                        scale: [
-                            2.0 / (self.surface.size[0] as f32),
-                            2.0 / (self.surface.size[1] as f32),
-                        ],
-                        translation: [-1.0, -1.0],
-                        vertices_descriptor_index: self
-                            .device
-                            .buffers
-                            .get(self.dynamic_vertex_buffer.buffer)
-                            .storage_idx,
-                        primitive_bytes_offset: vertices_offset,
-                        glyph_atlas_descriptor: self.get_glyph_atlas_descriptor(),
-                    };
-                }
-                ctx.bind_index_buffer(
-                    &self.device,
-                    self.dynamic_index_buffer.buffer,
-                    vk::IndexType::UINT32,
-                    indices_offset as usize,
-                );
-                ctx.bind_graphics_pipeline(&self.device, self.ui_program, 0);
-                ctx.draw_indexed(
-                    &self.device,
-                    vulkan::DrawIndexedOptions {
-                        vertex_count: indices.len() as u32,
-                        ..Default::default()
-                    },
-                );
-            }
-
-            ctx.end_pass(&self.device);
-            ctx.base().barrier(
-                &mut self.device,
-                self.surface.images[self.surface.current_image as usize],
-                vulkan::ImageState::Present,
-            );
-            ctx.base().end(&self.device)?;
-        }
-
-        {
-            profile::scope!("submit and present");
-            ctx.base_mut().prepare_present(&self.surface);
-            self.device
-                .submit(&ctx, &[&self.fence], &[(self.i_frame as u64) + 1])?;
-            self.i_frame += 1;
-            let _outdated = self.device.present(&ctx, &self.surface)?;
-        }
+        self.render_graph.execute(pass_api, context_pool)?;
+        self.frame_count += 1;
 
         Ok(())
+    }
+
+    pub fn get_glyph_atlas_descriptor(&self) -> u32 {
+        self.device
+            .images
+            .get(self.ui_node.glyph_atlas)
+            .full_view
+            .sampled_idx
     }
 }
 
 struct App {
     pub renderer: Renderer,
-    pub drawer: Drawer<'static>,
+    pub drawer: Rc<Drawer<'static>>,
     pub ui: ui::Ui,
     fps_histogram: custom_ui::FpsHistogram,
     docking: ui_docking::Docking,
@@ -629,44 +617,44 @@ impl App {
     pub fn update(&mut self, dt: f32) {
         self.fps_histogram.push_time(dt);
     }
+}
 
-    pub fn draw_menubar(&mut self, content_rect: &mut Rect) {
-        let em = self.ui.theme.font_size;
+pub fn draw_menubar(drawer: &mut Drawer, ui: &mut ui::Ui, content_rect: &mut Rect) {
+    let em = ui.theme.font_size;
 
-        let top_margin_rect = content_rect.split_top(0.25 * em);
+    let top_margin_rect = content_rect.split_top(0.25 * em);
 
-        let mut middle_menubar = content_rect.split_top(1.5 * em);
-        self.drawer
-            .draw_colored_rect(ColoredRect::new(middle_menubar).color(ColorU32::greyscale(0xE8)));
+    let mut middle_menubar = content_rect.split_top(1.5 * em);
+    drawer.draw_colored_rect(ColoredRect::new(middle_menubar).color(ColorU32::greyscale(0xE8)));
 
-        let mut menubar_split = rectsplit(&mut middle_menubar, SplitDirection::Left);
+    let mut menubar_split = rectsplit(&mut middle_menubar, SplitDirection::Left);
 
-        menubar_split.split(0.5 * em);
-        let _pressed_one = self.ui.rectbutton(
-            &mut self.drawer,
-            &mut menubar_split,
-            ui::RectButton { label: "Open File" },
-        );
+    menubar_split.split(0.5 * em);
+    let _pressed_one = ui.rectbutton(
+        drawer,
+        &mut menubar_split,
+        ui::RectButton { label: "Open File" },
+    );
 
-        menubar_split.split(0.5 * em);
-        let _pressed_two = self.ui.rectbutton(
-            &mut self.drawer,
-            &mut menubar_split,
-            ui::RectButton { label: "Second" },
-        );
+    menubar_split.split(0.5 * em);
+    let _pressed_two = ui.rectbutton(
+        drawer,
+        &mut menubar_split,
+        ui::RectButton { label: "Second" },
+    );
 
-        let bottom_margin_rect = content_rect.split_top(0.25 * em);
+    let bottom_margin_rect = content_rect.split_top(0.25 * em);
 
-        self.drawer
-            .draw_colored_rect(ColoredRect::new(top_margin_rect).color(ColorU32::greyscale(0xE8)));
-        self.drawer.draw_colored_rect(
-            ColoredRect::new(bottom_margin_rect).color(ColorU32::greyscale(0xE8)),
-        );
-    }
+    drawer.draw_colored_rect(ColoredRect::new(top_margin_rect).color(ColorU32::greyscale(0xE8)));
+    drawer.draw_colored_rect(ColoredRect::new(bottom_margin_rect).color(ColorU32::greyscale(0xE8)));
+}
 
+impl App {
     pub fn draw_ui(&mut self, viewport_size: [f32; 2]) {
         profile::scope!("ui draw");
-        self.drawer.clear();
+        let drawer = Rc::get_mut(&mut self.drawer).unwrap();
+
+        drawer.clear();
         self.ui.new_frame();
 
         let em = self.ui.em();
@@ -677,7 +665,7 @@ impl App {
         };
         let mut content_rect = fullscreen;
 
-        self.draw_menubar(&mut content_rect);
+        draw_menubar(drawer, &mut self.ui, &mut content_rect);
         let footer_rect = content_rect.split_bottom(3.0 * em);
 
         // -- Content
@@ -704,7 +692,7 @@ impl App {
             }
         };
 
-        self.drawer.draw_label(
+        drawer.draw_label(
             &self.ui.theme.face(),
             "Surprise",
             content_rect,
@@ -717,19 +705,19 @@ impl App {
         if let Some(content1_rect) = self.docking.tabview("Content 1") {
             draw_area(
                 &mut self.ui,
-                &mut self.drawer,
+                drawer,
                 content1_rect,
                 ColorU32::from_f32(0.53, 0.13, 0.13, 1.0),
                 Some(&format!(
                     "content number uno: frame {}",
-                    self.renderer.i_frame
+                    self.renderer.frame_count
                 )),
             );
 
             let mut cursor = content1_rect.pos;
             cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
             if self.ui.button(
-                &mut self.drawer,
+                drawer,
                 ui::Button::with_label("Toggle show histogram").rect(Rect {
                     pos: cursor,
                     size: [20.0 * em, 1.5 * em],
@@ -744,11 +732,11 @@ impl App {
             let mut cursor = content2_rect.pos;
             cursor = [cursor[0] + 2.0 * em, cursor[1] + 1.0 * em];
 
-            self.drawer.draw_colored_rect(
+            drawer.draw_colored_rect(
                 ColoredRect::new(content2_rect).color(ColorU32::greyscale(0x48)),
             );
 
-            self.drawer.draw_label(
+            drawer.draw_label(
                 &self.ui.theme.face(),
                 &format!("Font size {:.2}", self.ui.theme.font_size),
                 Rect {
@@ -761,7 +749,7 @@ impl App {
             cursor[1] += 3.0 * em;
 
             if self.ui.button(
-                &mut self.drawer,
+                drawer,
                 ui::Button::with_label("Increase font size by 2").rect(Rect {
                     pos: cursor,
                     size: [20.0 * em, 1.5 * em],
@@ -772,7 +760,7 @@ impl App {
             cursor[1] += 3.0 * em;
 
             if self.ui.button(
-                &mut self.drawer,
+                drawer,
                 ui::Button::with_label("Decrease font size by 2").rect(Rect {
                     pos: cursor,
                     size: [20.0 * em, 1.5 * em],
@@ -783,7 +771,7 @@ impl App {
             cursor[1] += 3.0 * em;
         }
 
-        self.docking.end_docking(&mut self.ui, &mut self.drawer);
+        self.docking.end_docking(&mut self.ui, drawer);
 
         // -- Footer
         let footer_label = format!(
@@ -792,7 +780,7 @@ impl App {
         );
         draw_area(
             &mut self.ui,
-            &mut self.drawer,
+            drawer,
             footer_rect,
             ColorU32::from_f32(0.53, 0.13, 0.13, 1.0),
             Some(&footer_label),
@@ -809,7 +797,7 @@ impl App {
             };
             custom_ui::widgets::histogram(
                 &mut self.ui,
-                &mut self.drawer,
+                drawer,
                 custom_ui::widgets::FpsHistogram {
                     histogram: &self.fps_histogram,
                     rect: histogram_rect,
@@ -821,7 +809,7 @@ impl App {
     }
 
     pub fn draw_gpu(&mut self) -> VulkanResult<()> {
-        self.renderer.draw(Some(&mut self.drawer))
+        self.renderer.render(Some(&self.drawer))
     }
 }
 
@@ -847,7 +835,7 @@ fn main() -> Result<()> {
     )
     .unwrap();
 
-    let renderer = Renderer::new(&window, shader_dir)?;
+    let renderer = Renderer::new(&window)?;
     let drawer = Drawer::new(
         unsafe { &mut DRAWER_VERTEX_MEMORY },
         unsafe { &mut DRAWER_INDEX_MEMORY },
@@ -860,7 +848,7 @@ fn main() -> Result<()> {
 
     let mut app = App {
         renderer,
-        drawer,
+        drawer: Rc::new(drawer),
         ui,
         fps_histogram: custom_ui::FpsHistogram::new(),
         docking: ui_docking::Docking::new(),

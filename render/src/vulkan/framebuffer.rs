@@ -119,17 +119,19 @@ pub fn create_renderpass(
 impl Device {
     pub fn create_framebuffer(
         &mut self,
-        format: &FramebufferFormat,
+        size: [i32; 3],
         color_attachments: &[Handle<Image>],
         depth_attachment: Handle<Image>,
     ) -> VulkanResult<Handle<Framebuffer>> {
         let mut framebuffer = Framebuffer {
             vkhandle: vk::Framebuffer::null(),
-            format: format.clone(),
+            format: FramebufferFormat::default(),
             color_attachments: DynamicArray::new(),
             depth_attachment: Handle::invalid(),
             render_passes: DynamicArray::new(),
         };
+
+        framebuffer.format.size = size;
 
         let attachment_count =
             color_attachments.len() + if depth_attachment.is_valid() { 1 } else { 0 };
@@ -142,6 +144,7 @@ impl Device {
                 .format
                 .attachment_formats
                 .push(image.spec.format);
+            framebuffer.color_attachments.push(*attachment);
         }
 
         if depth_attachment.is_valid() {
@@ -149,6 +152,7 @@ impl Device {
             attachment_views.push(image.full_view.vkhandle);
             framebuffer.format.depth_format = Some(image.spec.format);
         }
+        framebuffer.depth_attachment = depth_attachment;
 
         let mut load_ops = DynamicArray::<LoadOp, MAX_ATTACHMENTS>::new();
         for _ in 0..attachment_count {
