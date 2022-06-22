@@ -1,9 +1,11 @@
 use crate::{vk, vulkan};
 use exo::pool::*;
+use std::collections::HashMap;
 
 pub struct ResourceRegistry {
     pub(crate) texture_descs: Pool<TextureDesc>,
     pub(crate) texture_to_remove: Vec<Handle<vulkan::Image>>,
+    pub(crate) image_pool: HashMap<Handle<vulkan::Image>, Handle<TextureDesc>>,
     pub(crate) framebuffers: Vec<Handle<vulkan::Framebuffer>>,
     pub(crate) screen_size: [f32; 2],
 }
@@ -11,8 +13,9 @@ pub struct ResourceRegistry {
 impl ResourceRegistry {
     pub fn new() -> Self {
         Self {
-            texture_descs: Pool::new(),
-            texture_to_remove: Vec::new(),
+            texture_descs: Default::default(),
+            texture_to_remove: Default::default(),
+            image_pool: Default::default(),
             framebuffers: Vec::new(),
             screen_size: [1.0, 1.0],
         }
@@ -29,7 +32,7 @@ pub struct TextureDesc {
     pub size: TextureSize,
     pub format: vk::Format,
     pub image_type: vk::ImageType,
-    resolved_image: Handle<vulkan::Image>,
+    pub(crate) resolved_image: Handle<vulkan::Image>,
 }
 
 impl TextureDesc {
@@ -65,6 +68,7 @@ impl ResourceRegistry {
     ) {
         let desc = self.texture_descs.get_mut(desc_handle);
         desc.resolved_image = image_handle;
+        self.image_pool.insert(image_handle, desc_handle);
     }
 
     pub fn drop_image(&mut self, image_handle: Handle<vulkan::Image>) {
@@ -80,6 +84,7 @@ impl ResourceRegistry {
         }
 
         self.texture_to_remove.push(image_handle);
+        self.image_pool.remove(&image_handle);
     }
 
     pub(crate) fn resolve_image(
@@ -92,7 +97,7 @@ impl ResourceRegistry {
             return Ok(desc.resolved_image);
         }
 
-        let image_spec = vulkan::ImageSpec {
+        let desc_spec = vulkan::ImageSpec {
             size: self.texture_desc_size(desc.size),
             mip_levels: 1,
             image_type: desc.image_type,
@@ -100,7 +105,27 @@ impl ResourceRegistry {
             ..Default::default()
         };
 
-        device.create_image(image_spec)
+        let mut resolved_image_handle = None;
+        for (image_handle, desc_handle) in &self.image_pool {
+            if !desc_handle.is_valid() {
+                let image = device.images.get(*image_handle);
+                if image.spec == desc_spec {
+                    resolved_image_handle = Some(*image_handle);
+                    break;
+                }
+            }
+        }
+
+        if resolved_image_handle.is_none() {
+            resolved_image_handle = Some(device.create_image(desc_spec)?);
+        }
+
+        let resolved_image_handle = resolved_image_handle.unwrap();
+
+        self.texture_descs.get_mut(desc_handle).resolved_image = resolved_image_handle;
+        self.image_pool.insert(resolved_image_handle, desc_handle);
+
+        Ok(resolved_image_handle)
     }
 
     pub(crate) fn texture_desc_size(&self, texture_size: TextureSize) -> [i32; 3] {

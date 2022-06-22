@@ -53,6 +53,13 @@ impl<T> std::fmt::Debug for Handle<T> {
     }
 }
 
+impl<T> std::hash::Hash for Handle<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.generation.hash(state);
+        self.index.hash(state);
+    }
+}
+
 impl<T> Handle<T> {
     pub fn invalid() -> Self {
         Handle {
@@ -181,6 +188,12 @@ impl<T> Pool<T> {
         self.freelist_head = Some(handle.index);
 
         self.length -= 1;
+    }
+
+    pub fn clear(&mut self) {
+        self.length = 0;
+        self.init_freelist(0);
+        self.freelist_head = Some(0);
     }
 }
 

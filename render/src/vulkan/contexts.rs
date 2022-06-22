@@ -184,6 +184,44 @@ impl TransferContext {
         }
     }
 
+    pub fn copy_image(&self, device: &Device, src: Handle<Image>, dst: Handle<Image>) {
+        let src = device.images.get(src);
+        let dst = device.images.get(dst);
+
+        let src_subresource = vk::ImageSubresourceLayersBuilder::new()
+            .aspect_mask(src.full_view.range.aspect_mask)
+            .mip_level(src.full_view.range.base_mip_level)
+            .base_array_layer(src.full_view.range.base_array_layer)
+            .layer_count(src.full_view.range.layer_count);
+
+        let dst_subresource = vk::ImageSubresourceLayersBuilder::new()
+            .aspect_mask(dst.full_view.range.aspect_mask)
+            .mip_level(dst.full_view.range.base_mip_level)
+            .base_array_layer(dst.full_view.range.base_array_layer)
+            .layer_count(dst.full_view.range.layer_count);
+
+        let extent = vk::Extent3DBuilder::new()
+            .width(src.spec.size[0].min(dst.spec.size[0]) as u32)
+            .height(src.spec.size[1].min(dst.spec.size[1]) as u32)
+            .depth(src.spec.size[2].min(dst.spec.size[2]) as u32);
+
+        let image_copy = vk::ImageCopyBuilder::new()
+            .src_subresource(*src_subresource)
+            .dst_subresource(*dst_subresource)
+            .extent(*extent);
+
+        unsafe {
+            device.device.cmd_copy_image(
+                self.base.cmd,
+                src.vkhandle,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                dst.vkhandle,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[image_copy],
+            );
+        }
+    }
+
     pub fn clear_image(&self, device: &Device, image: Handle<Image>, clear_color: ClearColorValue) {
         let image = device.images.get(image);
         let range = image.full_view.range;

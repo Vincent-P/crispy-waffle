@@ -162,7 +162,6 @@ mod custom_render {
     impl UiPass {
         pub fn new(
             device: &mut vulkan::Device,
-            surface_format: vk::Format,
             glyph_atlas_size: [i32; 2],
         ) -> vulkan::VulkanResult<Self> {
             let mut shader_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
@@ -176,7 +175,7 @@ mod custom_render {
                     .create_shader(shader_dir.with_file_name("ui.frag.spv"))
                     .unwrap(),
                 attachments_format: vulkan::FramebufferFormat {
-                    attachment_formats: DynamicArray::from([surface_format]),
+                    attachment_formats: DynamicArray::from([vk::Format::R8G8B8A8_UNORM]),
                     ..Default::default()
                 },
             };
@@ -445,7 +444,6 @@ impl Renderer {
         )?;
 
         let surface = vulkan::Surface::new(&instance, &mut device, physical_device, window_handle)?;
-        let surface_format = surface.format.format;
         let swapchain_node = Rc::new(RefCell::new(render_graph::builtins::SwapchainPass {
             i_frame: 0,
             fence: device.create_fence()?,
@@ -498,7 +496,6 @@ impl Renderer {
         let render_graph = render_graph::graph::RenderGraph::new();
         let ui_node = custom_render::UiPass::new(
             &mut device,
-            surface_format,
             [GLYPH_ATLAS_RESOLUTION, GLYPH_ATLAS_RESOLUTION],
         )?;
 
@@ -538,7 +535,11 @@ impl Renderer {
     }
 
     pub fn render(&mut self, drawer: Option<&Rc<Drawer<'static>>>) -> VulkanResult<()> {
-        use render_graph::builtins::SwapchainPass;
+        use render_graph::{
+            builtins,
+            graph::{TextureDesc, TextureSize},
+        };
+
         profile::next_frame();
 
         let i_frame = {
@@ -546,15 +547,27 @@ impl Renderer {
             b.i_frame
         };
 
-        let swapchain_output =
-            SwapchainPass::acquire_next_image(&self.swapchain_node, &mut self.render_graph);
+        let intermediate_buffer = self
+            .render_graph
+            .output_image(TextureDesc::new(TextureSize::ScreenRelative([1.0, 1.0])));
 
         if let Some(drawer) = drawer {
             self.ui_node
-                .register_graph(&mut self.render_graph, swapchain_output, drawer);
+                .register_graph(&mut self.render_graph, intermediate_buffer, drawer);
         }
 
-        SwapchainPass::present(&self.swapchain_node, &mut self.render_graph);
+        let swapchain_output = builtins::SwapchainPass::acquire_next_image(
+            &self.swapchain_node,
+            &mut self.render_graph,
+        );
+
+        builtins::copy_image(
+            &mut self.render_graph,
+            intermediate_buffer,
+            swapchain_output,
+        );
+
+        builtins::SwapchainPass::present(&self.swapchain_node, &mut self.render_graph);
 
         let current_frame = i_frame % FRAME_QUEUE_LENGTH;
         let context_pool = &mut self.context_pools[current_frame];
@@ -816,9 +829,8 @@ impl App {
 fn main() -> Result<()> {
     profile::init();
 
-    let mut shader_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
-    shader_dir.push("dummy_file");
-    println!("Shaders directory: {:?}", &shader_dir);
+    let mut asset_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
+    asset_dir.push("dummy_file");
 
     let mut event_loop = EventLoop::new();
     let window = WindowBuilder::new()
@@ -827,7 +839,7 @@ fn main() -> Result<()> {
         .unwrap();
 
     let ui_font = Font::from_file(
-        shader_dir
+        asset_dir
             .with_file_name("iAWriterQuattroS-Regular.ttf")
             .to_str()
             .unwrap(),

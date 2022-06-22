@@ -80,3 +80,28 @@ impl SwapchainPass {
         )
     }
 }
+
+pub fn copy_image(
+    graph: &mut RenderGraph,
+    input: Handle<TextureDesc>,
+    output: Handle<TextureDesc>,
+) {
+    assert!(input != output);
+    graph.raw_pass(
+        move |graph: &mut RenderGraph,
+              api: &mut PassApi,
+              ctx: &mut vulkan::ComputeContext|
+              -> vulkan::VulkanResult<()> {
+            let input = graph.resources.resolve_image(api.device, input)?;
+            let output = graph.resources.resolve_image(api.device, output)?;
+
+            ctx.base_context()
+                .barrier(api.device, input, vulkan::ImageState::TransferSrc);
+            ctx.base_context()
+                .barrier(api.device, output, vulkan::ImageState::TransferDst);
+
+            ctx.transfer().copy_image(api.device, input, output);
+            Ok(())
+        },
+    );
+}

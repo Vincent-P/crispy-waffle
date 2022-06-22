@@ -101,6 +101,11 @@ impl RenderGraph {
             }
         }
 
+        self.resources.texture_descs.clear();
+        for (_image_handle, desc_handle) in &mut self.resources.image_pool {
+            *desc_handle = Handle::invalid();
+        }
+
         Ok(())
     }
 }
@@ -151,15 +156,6 @@ impl RenderGraph {
 
 impl RenderGraph {
     pub fn output_image(&mut self, output_desc: TextureDesc) -> Handle<TextureDesc> {
-        for (handle, texture_desc) in self.resources.texture_descs.iter() {
-            if texture_desc.size == output_desc.size
-                && texture_desc.format == output_desc.format
-                && texture_desc.image_type == output_desc.image_type
-            {
-                return handle;
-            }
-        }
-
         self.resources.texture_descs.add(output_desc)
     }
 

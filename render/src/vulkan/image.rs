@@ -28,7 +28,7 @@ pub struct ImageAccess {
     pub layout: vk::ImageLayout,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ImageSpec {
     pub size: [i32; 3],
     pub mip_levels: u32,
@@ -48,7 +48,8 @@ impl Default for ImageSpec {
             samples: vk::SampleCountFlagBits::_1,
             usages: vk::ImageUsageFlags::TRANSFER_SRC
                 | vk::ImageUsageFlags::TRANSFER_DST
-                | vk::ImageUsageFlags::SAMPLED,
+                | vk::ImageUsageFlags::SAMPLED
+                | vk::ImageUsageFlags::COLOR_ATTACHMENT,
         }
     }
 }
