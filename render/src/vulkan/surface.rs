@@ -173,6 +173,7 @@ impl Surface {
 
             self.images.push(device.create_image_proxy(
                 ImageSpec {
+                    name: format!("swapchain #{}", i_image),
                     size: [self.size[0], self.size[1], 1],
                     format: self.format.format,
                     usages: image_usages,

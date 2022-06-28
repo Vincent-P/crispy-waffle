@@ -222,6 +222,51 @@ impl TransferContext {
         }
     }
 
+    pub fn blit_image(&self, device: &Device, src: Handle<Image>, dst: Handle<Image>) {
+        let src = device.images.get(src);
+        let dst = device.images.get(dst);
+
+        let src_subresource = vk::ImageSubresourceLayersBuilder::new()
+            .aspect_mask(src.full_view.range.aspect_mask)
+            .mip_level(src.full_view.range.base_mip_level)
+            .base_array_layer(src.full_view.range.base_array_layer)
+            .layer_count(src.full_view.range.layer_count);
+
+        let dst_subresource = vk::ImageSubresourceLayersBuilder::new()
+            .aspect_mask(dst.full_view.range.aspect_mask)
+            .mip_level(dst.full_view.range.base_mip_level)
+            .base_array_layer(dst.full_view.range.base_array_layer)
+            .layer_count(dst.full_view.range.layer_count);
+
+        let empty_offset = vk::Offset3D::default();
+        let src_extent = vk::Offset3DBuilder::new()
+            .x(src.spec.size[0])
+            .y(src.spec.size[1])
+            .z(src.spec.size[2]);
+        let dst_extent = vk::Offset3DBuilder::new()
+            .x(dst.spec.size[0])
+            .y(dst.spec.size[1])
+            .z(dst.spec.size[2]);
+
+        let image_blit = vk::ImageBlitBuilder::new()
+            .src_subresource(*src_subresource)
+            .src_offsets([empty_offset, *src_extent])
+            .dst_subresource(*dst_subresource)
+            .dst_offsets([empty_offset, *dst_extent]);
+
+        unsafe {
+            device.device.cmd_blit_image(
+                self.base.cmd,
+                src.vkhandle,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                dst.vkhandle,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[image_blit],
+                vk::Filter::NEAREST,
+            );
+        }
+    }
+
     pub fn clear_image(&self, device: &Device, image: Handle<Image>, clear_color: ClearColorValue) {
         let image = device.images.get(image);
         let range = image.full_view.range;

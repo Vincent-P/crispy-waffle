@@ -30,6 +30,7 @@ pub struct ImageAccess {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ImageSpec {
+    pub name: String,
     pub size: [i32; 3],
     pub mip_levels: u32,
     pub image_type: vk::ImageType,
@@ -41,6 +42,7 @@ pub struct ImageSpec {
 impl Default for ImageSpec {
     fn default() -> Self {
         Self {
+            name: String::from("unnamed"),
             size: [1, 1, 1],
             mip_levels: 1,
             image_type: vk::ImageType::_2D,
@@ -158,6 +160,9 @@ impl Device {
         let full_view =
             self.create_image_view(vkimage, *full_range, spec.format, full_view_type)?;
 
+        self.set_vk_name(vkimage.0, vk::ObjectType::IMAGE, &spec.name)?;
+        self.set_vk_name(full_view.vkhandle.0, vk::ObjectType::IMAGE_VIEW, &spec.name)?;
+
         let image_handle = self.images.add(Image {
             vkhandle: vkimage,
             memory_block: Some(memory_block),
@@ -199,13 +204,18 @@ impl Device {
         };
         let full_view = self.create_image_view(proxy, *full_range, spec.format, full_view_type)?;
 
-        Ok(self.images.add(Image {
+        self.set_vk_name(proxy.0, vk::ObjectType::IMAGE, &spec.name)?;
+        self.set_vk_name(full_view.vkhandle.0, vk::ObjectType::IMAGE_VIEW, &spec.name)?;
+
+        let res = self.images.add(Image {
             vkhandle: proxy,
             memory_block: None,
             spec,
             full_view,
             state: ImageState::Null,
-        }))
+        });
+
+        Ok(res)
     }
 
     pub fn destroy_image(&mut self, image_handle: Handle<Image>) {
