@@ -15,7 +15,10 @@ impl SwapchainPass {
         graph: &mut RenderGraph,
     ) -> Handle<TextureDesc> {
         let pass = Rc::clone(pass);
-        let output = graph.output_image(TextureDesc::new(TextureSize::ScreenRelative([1.0, 1.0])));
+        let output = graph.output_image(TextureDesc::new(
+            String::from("swapchain desc"),
+            TextureSize::ScreenRelative([1.0, 1.0]),
+        ));
 
         graph.raw_pass(
             move |graph: &mut RenderGraph, api: &mut PassApi, ctx: &mut vulkan::ComputeContext| {
@@ -24,15 +27,16 @@ impl SwapchainPass {
                 let mut outdated = api.device.acquire_next_swapchain(&mut pass.surface)?;
                 while outdated {
                     api.device.wait_idle()?;
+
+                    for image in &pass.surface.images {
+                        graph.resources.drop_image(*image);
+                    }
+
                     pass.surface.recreate_swapchain(
                         api.instance,
                         api.device,
                         &mut api.physical_devices[api.i_device],
                     )?;
-
-                    for image in &pass.surface.images {
-                        graph.resources.drop_image(*image);
-                    }
 
                     outdated = api.device.acquire_next_swapchain(&mut pass.surface)?;
                 }
@@ -101,6 +105,31 @@ pub fn copy_image(
                 .barrier(api.device, output, vulkan::ImageState::TransferDst);
 
             ctx.transfer().copy_image(api.device, input, output);
+            Ok(())
+        },
+    );
+}
+
+pub fn blit_image(
+    graph: &mut RenderGraph,
+    input: Handle<TextureDesc>,
+    output: Handle<TextureDesc>,
+) {
+    assert!(input != output);
+    graph.raw_pass(
+        move |graph: &mut RenderGraph,
+              api: &mut PassApi,
+              ctx: &mut vulkan::ComputeContext|
+              -> vulkan::VulkanResult<()> {
+            let input = graph.resources.resolve_image(api.device, input)?;
+            let output = graph.resources.resolve_image(api.device, output)?;
+
+            ctx.base_context()
+                .barrier(api.device, input, vulkan::ImageState::TransferSrc);
+            ctx.base_context()
+                .barrier(api.device, output, vulkan::ImageState::TransferDst);
+
+            ctx.transfer().blit_image(api.device, input, output);
             Ok(())
         },
     );

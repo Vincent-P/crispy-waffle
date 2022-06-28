@@ -2,22 +2,27 @@ use crate::{vk, vulkan};
 use exo::pool::*;
 use std::collections::HashMap;
 
+struct ImageMetadata {
+    pub(crate) resolved_desc: Handle<TextureDesc>,
+    pub(crate) last_frame_used: u64,
+}
+
 pub struct ResourceRegistry {
     pub(crate) texture_descs: Pool<TextureDesc>,
-    pub(crate) texture_to_remove: Vec<Handle<vulkan::Image>>,
-    pub(crate) image_pool: HashMap<Handle<vulkan::Image>, Handle<TextureDesc>>,
-    pub(crate) framebuffers: Vec<Handle<vulkan::Framebuffer>>,
+    image_pool: HashMap<Handle<vulkan::Image>, ImageMetadata>,
+    framebuffers: Vec<Handle<vulkan::Framebuffer>>,
     pub(crate) screen_size: [f32; 2],
+    i_frame: u64,
 }
 
 impl ResourceRegistry {
     pub fn new() -> Self {
         Self {
             texture_descs: Default::default(),
-            texture_to_remove: Default::default(),
             image_pool: Default::default(),
             framebuffers: Vec::new(),
             screen_size: [1.0, 1.0],
+            i_frame: 0,
         }
     }
 }
@@ -29,15 +34,17 @@ pub enum TextureSize {
 }
 
 pub struct TextureDesc {
+    pub name: String,
     pub size: TextureSize,
     pub format: vk::Format,
     pub image_type: vk::ImageType,
-    pub(crate) resolved_image: Handle<vulkan::Image>,
+    resolved_image: Handle<vulkan::Image>,
 }
 
 impl TextureDesc {
-    pub fn new(size: TextureSize) -> Self {
+    pub fn new(name: String, size: TextureSize) -> Self {
         Self {
+            name,
             size,
             format: vk::Format::R8G8B8A8_UNORM,
             image_type: vk::ImageType::_2D,
@@ -57,8 +64,36 @@ impl TextureDesc {
 }
 
 impl ResourceRegistry {
-    pub fn import_image(&mut self, _: Handle<vulkan::Image>) -> Handle<TextureDesc> {
-        unimplemented!()
+    fn update_image_metadata(&mut self, image: Handle<vulkan::Image>, desc: Handle<TextureDesc>) {
+        let new_metadata = ImageMetadata {
+            resolved_desc: desc,
+            last_frame_used: 0,
+        };
+        let metadata = self.image_pool.entry(image).or_insert(new_metadata);
+        metadata.last_frame_used = self.i_frame;
+    }
+
+    pub fn end_frame(&mut self, device: &mut vulkan::Device, i_frame: u64) {
+        self.i_frame = i_frame;
+
+        // Resolve images each frame
+        self.texture_descs.clear();
+
+        let mut to_remove: Vec<Handle<vulkan::Image>> = Default::default();
+        for (image_handle, metadata) in &mut self.image_pool {
+            // Destroy images unused for 3 frames
+            if (metadata.last_frame_used + 3) < i_frame {
+                to_remove.push(*image_handle);
+            }
+
+            // Resolve images each frame
+            metadata.resolved_desc = Handle::invalid();
+        }
+
+        for handle in to_remove {
+            self.image_pool.remove(&handle);
+            device.images.remove(handle);
+        }
     }
 
     pub fn set_image(
@@ -68,7 +103,7 @@ impl ResourceRegistry {
     ) {
         let desc = self.texture_descs.get_mut(desc_handle);
         desc.resolved_image = image_handle;
-        self.image_pool.insert(image_handle, desc_handle);
+        self.update_image_metadata(image_handle, desc_handle);
     }
 
     pub fn drop_image(&mut self, image_handle: Handle<vulkan::Image>) {
@@ -83,7 +118,6 @@ impl ResourceRegistry {
             self.texture_descs.get_mut(matching_desc).resolved_image = Handle::invalid();
         }
 
-        self.texture_to_remove.push(image_handle);
         self.image_pool.remove(&image_handle);
     }
 
@@ -98,6 +132,7 @@ impl ResourceRegistry {
         }
 
         let desc_spec = vulkan::ImageSpec {
+            name: desc.name.clone(),
             size: self.texture_desc_size(desc.size),
             mip_levels: 1,
             image_type: desc.image_type,
@@ -106,8 +141,8 @@ impl ResourceRegistry {
         };
 
         let mut resolved_image_handle = None;
-        for (image_handle, desc_handle) in &self.image_pool {
-            if !desc_handle.is_valid() {
+        for (image_handle, metadata) in &self.image_pool {
+            if !metadata.resolved_desc.is_valid() {
                 let image = device.images.get(*image_handle);
                 if image.spec == desc_spec {
                     resolved_image_handle = Some(*image_handle);
@@ -123,7 +158,7 @@ impl ResourceRegistry {
         let resolved_image_handle = resolved_image_handle.unwrap();
 
         self.texture_descs.get_mut(desc_handle).resolved_image = resolved_image_handle;
-        self.image_pool.insert(resolved_image_handle, desc_handle);
+        self.update_image_metadata(resolved_image_handle, desc_handle);
 
         Ok(resolved_image_handle)
     }

@@ -10,6 +10,7 @@ enum Pass {
 pub struct RenderGraph {
     pub resources: ResourceRegistry,
     passes: Vec<Pass>,
+    i_frame: u64,
 }
 
 impl RenderGraph {
@@ -17,6 +18,7 @@ impl RenderGraph {
         Self {
             resources: ResourceRegistry::new(),
             passes: Vec::new(),
+            i_frame: 0,
         }
     }
 }
@@ -101,10 +103,9 @@ impl RenderGraph {
             }
         }
 
-        self.resources.texture_descs.clear();
-        for (_image_handle, desc_handle) in &mut self.resources.image_pool {
-            *desc_handle = Handle::invalid();
-        }
+        self.resources.end_frame(api.device, self.i_frame);
+
+        self.i_frame += 1;
 
         Ok(())
     }

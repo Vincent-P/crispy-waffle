@@ -201,6 +201,7 @@ mod custom_render {
             )?;
 
             let glyph_atlas = device.create_image(vulkan::ImageSpec {
+                name: String::from("glyph atlas"),
                 size: [glyph_atlas_size[0], glyph_atlas_size[1], 1],
                 format: vk::Format::R8_UNORM,
                 ..Default::default()
@@ -547,9 +548,10 @@ impl Renderer {
             b.i_frame
         };
 
-        let intermediate_buffer = self
-            .render_graph
-            .output_image(TextureDesc::new(TextureSize::ScreenRelative([1.0, 1.0])));
+        let intermediate_buffer = self.render_graph.output_image(TextureDesc::new(
+            String::from("render buffer desc"),
+            TextureSize::ScreenRelative([1.0, 1.0]),
+        ));
 
         if let Some(drawer) = drawer {
             self.ui_node
@@ -561,7 +563,7 @@ impl Renderer {
             &mut self.render_graph,
         );
 
-        builtins::copy_image(
+        builtins::blit_image(
             &mut self.render_graph,
             intermediate_buffer,
             swapchain_output,
