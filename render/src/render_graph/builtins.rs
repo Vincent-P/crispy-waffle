@@ -75,7 +75,6 @@ impl SwapchainPass {
                 let signal_values = [signal_value];
                 api.device
                     .submit(&ctx, &[&pass_ref.fence], &signal_values)?;
-                println!("Submit {:?}", signal_values);
 
                 pass_ref.i_frame += 1;
 

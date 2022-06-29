@@ -582,7 +582,6 @@ impl Renderer {
         {
             let fence = &self.swapchain_node.borrow().fence;
             let wait_values = [wait_value];
-            println!("Frame #{}; waiting {:?}", i_frame, wait_values);
             self.device.wait_for_fences(&[fence], &wait_values)?;
         }
 
