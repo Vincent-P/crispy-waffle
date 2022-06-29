@@ -158,15 +158,11 @@ impl Surface {
                 .result()?
         };
 
-        let swapchain_images = unsafe {
-            device
-                .device
-                .get_swapchain_images_khr(self.swapchain, Some(MAX_SWAPCHAIN_IMAGES as u32))
-        }
-        .result()?;
+        let swapchain_images =
+            unsafe { device.device.get_swapchain_images_khr(self.swapchain, None) }.result()?;
 
         assert!(self.images.is_empty());
-        for i_image in 0..swapchain_images.len() {
+        for i_image in 0..swapchain_images.len().min(MAX_SWAPCHAIN_IMAGES) {
             if swapchain_images[i_image] == vk::Image::null() {
                 break;
             }

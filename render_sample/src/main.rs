@@ -16,6 +16,7 @@ mod profile {
             optick::event!($name);
         };
     }
+
     #[cfg(feature = "tracy")]
     pub fn init() {
         tracy_client::Client::start();
@@ -362,7 +363,6 @@ mod custom_render {
     }
 }
 
-use anyhow::Result;
 use drawer2d::{drawer::*, font::*, rect::*};
 use exo::dynamic_array::DynamicArray;
 use raw_window_handle::HasRawWindowHandle;
@@ -458,7 +458,7 @@ impl Renderer {
             &mut device,
             RingBufferSpec {
                 usages: vk::BufferUsageFlags::UNIFORM_BUFFER,
-                memory_usage: vulkan::buffer::MemoryUsageFlags::FAST_DEVICE_ACCESS,
+                memory_usage: vulkan::buffer::MemoryUsageFlags::CpuToGpu,
                 frame_queue_length: FRAME_QUEUE_LENGTH,
                 buffer_size: 1024,
             },
@@ -468,9 +468,9 @@ impl Renderer {
             &mut device,
             RingBufferSpec {
                 usages: vk::BufferUsageFlags::STORAGE_BUFFER,
-                memory_usage: vulkan::buffer::MemoryUsageFlags::FAST_DEVICE_ACCESS,
+                memory_usage: vulkan::buffer::MemoryUsageFlags::CpuToGpu,
                 frame_queue_length: FRAME_QUEUE_LENGTH,
-                buffer_size: 128 << 20,
+                buffer_size: 128 << 10,
             },
         )?;
 
@@ -478,9 +478,9 @@ impl Renderer {
             &mut device,
             RingBufferSpec {
                 usages: vk::BufferUsageFlags::INDEX_BUFFER,
-                memory_usage: vulkan::buffer::MemoryUsageFlags::FAST_DEVICE_ACCESS,
+                memory_usage: vulkan::buffer::MemoryUsageFlags::CpuToGpu,
                 frame_queue_length: FRAME_QUEUE_LENGTH,
-                buffer_size: 32 << 20,
+                buffer_size: 32 << 10,
             },
         )?;
 
@@ -488,9 +488,9 @@ impl Renderer {
             &mut device,
             RingBufferSpec {
                 usages: vk::BufferUsageFlags::TRANSFER_SRC,
-                memory_usage: vulkan::buffer::MemoryUsageFlags::UPLOAD,
+                memory_usage: vulkan::buffer::MemoryUsageFlags::CpuToGpu,
                 frame_queue_length: FRAME_QUEUE_LENGTH,
-                buffer_size: 32 << 20,
+                buffer_size: 32 << 10,
             },
         )?;
 
@@ -569,19 +569,21 @@ impl Renderer {
             swapchain_output,
         );
 
-        builtins::SwapchainPass::present(&self.swapchain_node, &mut self.render_graph);
+        builtins::SwapchainPass::present(
+            &self.swapchain_node,
+            &mut self.render_graph,
+            (i_frame + FRAME_QUEUE_LENGTH) as u64,
+        );
 
         let current_frame = i_frame % FRAME_QUEUE_LENGTH;
         let context_pool = &mut self.context_pools[current_frame];
 
-        let wait_value: u64 = if i_frame < FRAME_QUEUE_LENGTH {
-            0
-        } else {
-            (i_frame - FRAME_QUEUE_LENGTH + 1) as u64
-        };
+        let wait_value: u64 = i_frame as u64;
         {
             let fence = &self.swapchain_node.borrow().fence;
-            self.device.wait_for_fences(&[fence], &[wait_value])?;
+            let wait_values = [wait_value];
+            println!("Frame #{}; waiting {:?}", i_frame, wait_values);
+            self.device.wait_for_fences(&[fence], &wait_values)?;
         }
 
         self.device.reset_context_pool(context_pool)?;
@@ -828,7 +830,7 @@ impl App {
     }
 }
 
-fn main() -> Result<()> {
+fn main() {
     profile::init();
 
     let mut asset_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
@@ -849,7 +851,7 @@ fn main() -> Result<()> {
     )
     .unwrap();
 
-    let renderer = Renderer::new(&window)?;
+    let renderer = Renderer::new(&window).unwrap();
     let drawer = Drawer::new(
         unsafe { &mut DRAWER_VERTEX_MEMORY },
         unsafe { &mut DRAWER_INDEX_MEMORY },
@@ -934,6 +936,4 @@ fn main() -> Result<()> {
     });
 
     app.renderer.destroy();
-
-    Ok(())
 }

@@ -3,7 +3,6 @@ use exo::{dynamic_array::DynamicArray, pool::Handle};
 use super::vulkan::{buffer::*, device::*, error::*};
 
 use erupt::vk;
-use gpu_alloc::UsageFlags;
 
 pub struct RingBufferSpec {
     pub usages: vk::BufferUsageFlags,
@@ -28,7 +27,7 @@ impl RingBuffer {
         let buffer = device.create_buffer(BufferSpec {
             size: spec.buffer_size,
             usages: spec.usages,
-            memory_usage: spec.memory_usage.union(UsageFlags::HOST_ACCESS),
+            memory_usage: spec.memory_usage,
         })?;
 
         Ok(Self {

@@ -41,6 +41,8 @@ impl RenderGraph {
         mut api: PassApi,
         context_pool: &mut vulkan::ContextPool,
     ) -> vulkan::VulkanResult<()> {
+        self.resources.begin_frame(api.device, self.i_frame);
+
         let mut ctx = api.device.get_graphics_context(context_pool)?;
         ctx.base().begin(api.device)?;
 
@@ -103,7 +105,7 @@ impl RenderGraph {
             }
         }
 
-        self.resources.end_frame(api.device, self.i_frame);
+        self.resources.end_frame();
 
         self.i_frame += 1;
 

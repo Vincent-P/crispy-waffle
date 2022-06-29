@@ -1,11 +1,10 @@
 use super::device::*;
 use super::error::*;
+use super::memory;
 
 use exo::pool::Handle;
 
 use erupt::vk;
-use gpu_alloc::{Request, UsageFlags};
-use gpu_alloc_erupt::EruptMemoryDevice;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ImageState {
@@ -68,10 +67,11 @@ pub struct ImageView {
 #[derive(Debug)]
 pub struct Image {
     pub vkhandle: vk::Image,
-    pub memory_block: Option<gpu_alloc::MemoryBlock<vk::DeviceMemory>>,
+    pub memory_block: Option<memory::Allocation>,
     pub spec: ImageSpec,
     pub full_view: ImageView,
     pub state: ImageState,
+    is_proxy: bool,
 }
 
 impl Device {
@@ -119,23 +119,22 @@ impl Device {
 
         let vkimage = unsafe { self.device.create_image(&image_create_info, None) }.result()?;
 
-        let mem_requirements = unsafe { self.device.get_image_memory_requirements(vkimage) };
-
         let memory_block = unsafe {
-            self.allocator.alloc(
-                EruptMemoryDevice::wrap(&self.device),
-                Request {
-                    size: mem_requirements.size,
-                    align_mask: 1,
-                    usage: UsageFlags::FAST_DEVICE_ACCESS,
-                    memory_types: !0,
-                },
+            self.allocator.allocate_memory_for_image(
+                &self.device,
+                vkimage,
+                vk_alloc::MemoryLocation::GpuOnly,
+                memory::Lifetime::Image,
+                true,
             )
         }?;
 
         unsafe {
-            self.device
-                .bind_image_memory(vkimage, *memory_block.memory(), 0)
+            self.device.bind_image_memory(
+                vkimage,
+                memory_block.device_memory(),
+                memory_block.offset(),
+            )
         }
         .result()?;
 
@@ -162,6 +161,11 @@ impl Device {
 
         self.set_vk_name(vkimage.0, vk::ObjectType::IMAGE, &spec.name)?;
         self.set_vk_name(full_view.vkhandle.0, vk::ObjectType::IMAGE_VIEW, &spec.name)?;
+        self.set_vk_name(
+            memory_block.device_memory().0,
+            vk::ObjectType::DEVICE_MEMORY,
+            &spec.name,
+        )?;
 
         let image_handle = self.images.add(Image {
             vkhandle: vkimage,
@@ -169,6 +173,7 @@ impl Device {
             spec,
             full_view,
             state: ImageState::Null,
+            is_proxy: false,
         });
 
         self.images.get_mut(image_handle).full_view.sampled_idx =
@@ -213,17 +218,41 @@ impl Device {
             spec,
             full_view,
             state: ImageState::Null,
+            is_proxy: true,
         });
 
         Ok(res)
     }
 
+    pub fn unbind_image(&mut self, image_handle: Handle<Image>) {
+        let image = self.images.get_mut(image_handle);
+
+        if image.full_view.sampled_idx > 0 {
+            self.descriptors
+                .bindless_set
+                .unbind_sampler_image(image.full_view.sampled_idx as usize);
+            image.full_view.sampled_idx = 0;
+        }
+    }
+
     pub fn destroy_image(&mut self, image_handle: Handle<Image>) {
         let image = self.images.get_mut(image_handle);
+
+        if image.full_view.sampled_idx > 0 {
+            self.descriptors
+                .bindless_set
+                .unbind_sampler_image(image.full_view.sampled_idx as usize);
+        }
+
+        unsafe {
+            if !image.is_proxy {
+                self.device.destroy_image(image.vkhandle, None);
+            }
+        }
+
         if let Some(block) = image.memory_block.take() {
             unsafe {
-                self.allocator
-                    .dealloc(EruptMemoryDevice::wrap(&self.device), block);
+                self.allocator.deallocate(&self.device, &block).unwrap();
             }
         }
 

@@ -1,5 +1,4 @@
 use erupt::vk;
-use gpu_alloc::AllocationError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -22,7 +21,7 @@ pub enum VulkanError {
     #[error("api returned {0}")]
     APIError(vk::Result),
     #[error("memory allocation failed: {0}")]
-    AllocatorError(AllocationError),
+    AllocatorError(vk_alloc::AllocatorError),
     #[error("unknown vulkan error")]
     Unknown,
 }
@@ -34,8 +33,8 @@ impl From<vk::Result> for VulkanError {
     }
 }
 
-impl From<AllocationError> for VulkanError {
-    fn from(error: AllocationError) -> Self {
+impl From<vk_alloc::AllocatorError> for VulkanError {
+    fn from(error: vk_alloc::AllocatorError) -> Self {
         Self::AllocatorError(error)
     }
 }

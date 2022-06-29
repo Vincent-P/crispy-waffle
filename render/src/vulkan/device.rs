@@ -7,6 +7,7 @@ use super::framebuffer::*;
 use super::graphics_pipeline::*;
 use super::image::*;
 use super::instance::*;
+use super::memory;
 use super::physical_device::*;
 use super::shader::*;
 use super::surface::*;
@@ -14,7 +15,6 @@ use super::surface::*;
 use exo::{dynamic_array::DynamicArray, pool::Pool};
 
 use erupt::{cstr, vk, DeviceLoader, ExtendableFrom};
-use gpu_alloc::{Config, GpuAllocator};
 use std::ffi::CString;
 use std::os::raw::c_char;
 
@@ -35,7 +35,7 @@ pub struct DeviceDescriptors {
 pub struct Device {
     pub device: Box<DeviceLoader>,
     pub spec: DeviceSpec,
-    pub allocator: GpuAllocator<vk::DeviceMemory>,
+    pub allocator: memory::Allocator,
     pub graphics_family_idx: u32,
     pub compute_family_idx: u32,
     pub transfer_family_idx: u32,
@@ -132,11 +132,16 @@ impl Device {
         .unwrap();
         let device = Box::new(device);
 
-        let props = unsafe {
-            gpu_alloc_erupt::device_properties(&instance.instance, physical_device.device)
-        }?;
-        let config = Config::i_am_prototyping();
-        let allocator = GpuAllocator::new(config, props);
+        let allocator = unsafe {
+            memory::Allocator::new(
+                &instance.instance,
+                physical_device.device,
+                &vk_alloc::AllocatorDescriptor {
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
 
         let bindless_set = BindlessSet::new(&device, 1024, 1024, 1024)?;
 

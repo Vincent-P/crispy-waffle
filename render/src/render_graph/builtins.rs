@@ -58,7 +58,7 @@ impl SwapchainPass {
         output
     }
 
-    pub fn present(pass: &Rc<RefCell<Self>>, graph: &mut RenderGraph) {
+    pub fn present(pass: &Rc<RefCell<Self>>, graph: &mut RenderGraph, signal_value: u64) {
         let pass = Rc::clone(pass);
         graph.raw_pass(
             move |_graph: &mut RenderGraph, api: &mut PassApi, ctx: &mut vulkan::ComputeContext| {
@@ -72,8 +72,10 @@ impl SwapchainPass {
                 ctx.base_context().end(api.device)?;
 
                 ctx.base_context_mut().prepare_present(&pass_ref.surface);
+                let signal_values = [signal_value];
                 api.device
-                    .submit(&ctx, &[&pass_ref.fence], &[(pass_ref.i_frame as u64) + 1])?;
+                    .submit(&ctx, &[&pass_ref.fence], &signal_values)?;
+                println!("Submit {:?}", signal_values);
 
                 pass_ref.i_frame += 1;
 

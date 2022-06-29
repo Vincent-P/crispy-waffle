@@ -2,12 +2,10 @@ use exo::pool::Handle;
 
 use super::device::*;
 use super::error::*;
+use super::memory;
 
 use erupt::vk;
-use gpu_alloc::Request;
-use gpu_alloc_erupt::EruptMemoryDevice;
-
-pub type MemoryUsageFlags = gpu_alloc::UsageFlags;
+pub type MemoryUsageFlags = vk_alloc::MemoryLocation;
 
 #[derive(Debug)]
 pub struct BufferSpec {
@@ -21,7 +19,7 @@ impl Default for BufferSpec {
         Self {
             size: 0,
             usages: vk::BufferUsageFlags::STORAGE_BUFFER,
-            memory_usage: MemoryUsageFlags::FAST_DEVICE_ACCESS,
+            memory_usage: MemoryUsageFlags::GpuOnly,
         }
     }
 }
@@ -29,7 +27,7 @@ impl Default for BufferSpec {
 #[derive(Debug)]
 pub struct Buffer {
     pub vkhandle: vk::Buffer,
-    pub memory_block: Option<gpu_alloc::MemoryBlock<vk::DeviceMemory>>,
+    pub memory_block: Option<memory::Allocation>,
     pub spec: BufferSpec,
     pub mapped_ptr: *mut u8,
     pub storage_idx: u32,
@@ -46,22 +44,22 @@ impl Device {
 
         let vkbuffer = unsafe { self.device.create_buffer(&buffer_info, None).result()? };
 
-        let mem_requirements = unsafe { self.device.get_buffer_memory_requirements(vkbuffer) };
         let memory_block = unsafe {
-            self.allocator.alloc(
-                EruptMemoryDevice::wrap(&self.device),
-                Request {
-                    size: mem_requirements.size,
-                    align_mask: 1,
-                    usage: spec.memory_usage,
-                    memory_types: !0,
-                },
+            self.allocator.allocate_memory_for_buffer(
+                &self.device,
+                vkbuffer,
+                spec.memory_usage,
+                memory::Lifetime::Buffer,
             )
         }?;
 
         unsafe {
             self.device
-                .bind_buffer_memory(vkbuffer, *memory_block.memory(), 0)
+                .bind_buffer_memory(
+                    vkbuffer,
+                    memory_block.device_memory(),
+                    memory_block.offset(),
+                )
                 .result()?;
         }
 
@@ -91,9 +89,10 @@ impl Device {
                     .memory_block
                     .as_mut()
                     .unwrap()
-                    .map(EruptMemoryDevice::wrap(&self.device), 0, buffer.spec.size)
+                    .mapped_slice_mut()
                     .unwrap()
-                    .as_ptr()
+                    .unwrap()
+                    .as_mut_ptr()
             };
             assert!(!mapped.is_null());
             buffer.mapped_ptr = mapped;

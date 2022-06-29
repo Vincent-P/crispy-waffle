@@ -38,23 +38,26 @@ pub struct Instance {
 }
 
 unsafe extern "system" fn debug_callback(
-    _message_severity: vk::DebugUtilsMessageSeverityFlagBitsEXT,
+    message_severity: vk::DebugUtilsMessageSeverityFlagBitsEXT,
     _message_types: vk::DebugUtilsMessageTypeFlagsEXT,
     p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _p_user_data: *mut c_void,
 ) -> vk::Bool32 {
-    match (*p_callback_data).message_id_number {
-        // Read-after-write on bindless render targets
-        1287084845 => return vk::FALSE,
-        // Resize with out of date imageExtent
-        0x7cd0911d => return vk::FALSE,
+    match message_severity {
+        vk::DebugUtilsMessageSeverityFlagBitsEXT::WARNING_EXT => {
+            eprintln!(
+                "Warning: {}",
+                CStr::from_ptr((*p_callback_data).p_message).to_string_lossy()
+            );
+        }
+        vk::DebugUtilsMessageSeverityFlagBitsEXT::ERROR_EXT => {
+            eprintln!(
+                "Error: {}",
+                CStr::from_ptr((*p_callback_data).p_message).to_string_lossy()
+            );
+        }
         _ => {}
     }
-
-    eprintln!(
-        "{}",
-        CStr::from_ptr((*p_callback_data).p_message).to_string_lossy()
-    );
 
     vk::FALSE
 }

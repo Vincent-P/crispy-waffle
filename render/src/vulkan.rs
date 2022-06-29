@@ -9,6 +9,7 @@ pub mod framebuffer;
 pub mod graphics_pipeline;
 pub mod image;
 pub mod instance;
+pub mod memory;
 pub mod physical_device;
 pub mod queues;
 pub mod shader;

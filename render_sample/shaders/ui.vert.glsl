@@ -142,9 +142,9 @@ void textured_rect(out float2 o_position, out float2 o_uv, u32 i_primitive, u32 
 
 layout(location = 0) out float2 o_uv;
 layout(location = 1) out flat u32 o_primitive_index;
-layout(location = 2) out flat u32 o_corner;
-layout(location = 3) out flat u32 o_primitive_type;
-layout(location = 4) out flat u32 o_i_index;
+// layout(location = 2) out flat u32 o_corner;
+// layout(location = 3) out flat u32 o_primitive_type;
+// layout(location = 4) out flat u32 o_i_index;
 void main()
 {
 	u32 corner		   = (gl_VertexIndex & 0xc0000000u) >> 30;
@@ -172,7 +172,7 @@ void main()
 	o_uv = uv;
 	o_primitive_index = gl_VertexIndex;
 
-	o_corner = corner;
-	o_primitive_type = primitive_type;
-	o_i_index = i_primitive;
+	// o_corner = corner;
+	// o_primitive_type = primitive_type;
+	// o_i_index = i_primitive;
 }
