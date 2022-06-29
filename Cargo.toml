@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "exo",
+    "assets",
     "render",
     "drawer2d",
     "ui",

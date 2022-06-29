@@ -623,6 +623,7 @@ struct App {
     pub renderer: Renderer,
     pub drawer: Rc<Drawer<'static>>,
     pub ui: ui::Ui,
+    pub window_size: [f32; 2],
     fps_histogram: custom_ui::FpsHistogram,
     docking: ui_docking::Docking,
     show_fps: bool,
@@ -630,8 +631,10 @@ struct App {
 }
 
 impl App {
-    pub fn update(&mut self, dt: f32) {
+    pub fn update(&mut self, dt: f32) -> vulkan::VulkanResult<()> {
         self.fps_histogram.push_time(dt);
+        self.draw_ui();
+        self.draw_gpu()
     }
 }
 
@@ -666,8 +669,9 @@ pub fn draw_menubar(drawer: &mut Drawer, ui: &mut ui::Ui, content_rect: &mut Rec
 }
 
 impl App {
-    pub fn draw_ui(&mut self, viewport_size: [f32; 2]) {
+    pub fn draw_ui(&mut self) {
         profile::scope!("ui draw");
+        let viewport_size = self.window_size;
         let drawer = Rc::get_mut(&mut self.drawer).unwrap();
 
         drawer.clear();
@@ -685,7 +689,6 @@ impl App {
         let footer_rect = content_rect.split_bottom(3.0 * em);
 
         // -- Content
-
         let draw_area = |ui: &mut ui::Ui,
                          drawer: &mut Drawer,
                          rect: Rect,
@@ -820,11 +823,10 @@ impl App {
                 },
             );
         }
-
-        self.ui.end_frame();
     }
 
     pub fn draw_gpu(&mut self) -> VulkanResult<()> {
+        self.ui.end_frame();
         self.renderer.render(Some(&self.drawer))
     }
 }
@@ -869,6 +871,7 @@ fn main() {
         docking: ui_docking::Docking::new(),
         show_fps: true,
         font_size,
+        window_size: [1280.0, 720.0],
     };
 
     let now = Instant::now();
@@ -917,14 +920,12 @@ fn main() {
 
             Event::MainEventsCleared => {
                 let window_size: winit::dpi::LogicalSize<f32> = window.inner_size().to_logical(1.0);
-
                 let dt = now.elapsed() - last_time;
                 last_time = now.elapsed();
-                app.update(dt.as_secs_f32());
 
-                app.draw_ui([window_size.width, window_size.height]);
+                app.window_size = [window_size.width, window_size.height];
 
-                if let Err(e) = app.draw_gpu() {
+                if let Err(e) = app.update(dt.as_secs_f32()) {
                     eprintln!("Renderer error: {:?}", e);
                     *control_flow = ControlFlow::Exit;
                 }
