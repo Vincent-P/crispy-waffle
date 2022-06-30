@@ -480,7 +480,7 @@ impl Renderer {
                 usages: vk::BufferUsageFlags::INDEX_BUFFER,
                 memory_usage: vulkan::buffer::MemoryUsageFlags::CpuToGpu,
                 frame_queue_length: FRAME_QUEUE_LENGTH,
-                buffer_size: 32 << 10,
+                buffer_size: 128 << 10,
             },
         )?;
 
@@ -490,7 +490,7 @@ impl Renderer {
                 usages: vk::BufferUsageFlags::TRANSFER_SRC,
                 memory_usage: vulkan::buffer::MemoryUsageFlags::CpuToGpu,
                 frame_queue_length: FRAME_QUEUE_LENGTH,
-                buffer_size: 32 << 10,
+                buffer_size: 32 << 20,
             },
         )?;
 
