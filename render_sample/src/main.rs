@@ -152,8 +152,8 @@ mod custom_ui {
 mod custom_render {
     use drawer2d::drawer::Drawer;
     use exo::{dynamic_array::DynamicArray, pool::Handle};
-    use render::{bindings, render_graph::graph::*, vk, vulkan};
-    use std::{mem::size_of, path::PathBuf, rc::Rc};
+    use render::{bindings, render_graph::graph::*, shader_path, vk, vulkan};
+    use std::{mem::size_of, rc::Rc};
 
     pub struct UiPass {
         pub glyph_atlas: Handle<vulkan::Image>,
@@ -165,16 +165,9 @@ mod custom_render {
             device: &mut vulkan::Device,
             glyph_atlas_size: [i32; 2],
         ) -> vulkan::VulkanResult<Self> {
-            let mut shader_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
-            shader_dir.push("dummy_file");
-
             let ui_gfx_state = vulkan::GraphicsState {
-                vertex_shader: device
-                    .create_shader(shader_dir.with_file_name("ui.vert.spv"))
-                    .unwrap(),
-                fragment_shader: device
-                    .create_shader(shader_dir.with_file_name("ui.frag.spv"))
-                    .unwrap(),
+                vertex_shader: device.create_shader(shader_path!("ui.vert.spv")).unwrap(),
+                fragment_shader: device.create_shader(shader_path!("ui.frag.spv")).unwrap(),
                 attachments_format: vulkan::FramebufferFormat {
                     attachment_formats: DynamicArray::from([vk::Format::R8G8B8A8_UNORM]),
                     ..Default::default()
@@ -366,8 +359,8 @@ mod custom_render {
 use drawer2d::{drawer::*, font::*, rect::*};
 use exo::dynamic_array::DynamicArray;
 use raw_window_handle::HasRawWindowHandle;
-use render::{render_graph, ring_buffer::*, vk, vulkan, vulkan::error::VulkanResult};
-use std::{cell::RefCell, ffi::CStr, os::raw::c_char, path::PathBuf, rc::Rc, time::Instant};
+use render::{render_graph, ring_buffer::*, shader, vk, vulkan, vulkan::error::VulkanResult};
+use std::{cell::RefCell, ffi::CStr, os::raw::c_char, rc::Rc, time::Instant};
 use winit::{
     event::{ElementState, Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -394,6 +387,7 @@ struct Renderer {
     ui_node: custom_render::UiPass,
     swapchain_node: Rc<RefCell<render_graph::builtins::SwapchainPass>>,
     frame_count: usize,
+    shader_watcher: shader::ShaderWatcher,
 }
 
 impl Renderer {
@@ -500,6 +494,9 @@ impl Renderer {
             [GLYPH_ATLAS_RESOLUTION, GLYPH_ATLAS_RESOLUTION],
         )?;
 
+        let mut shader_watcher = shader::ShaderWatcher::new();
+        render::watch_crate_shaders!(shader_watcher);
+
         Ok(Self {
             instance,
             physical_devices,
@@ -514,6 +511,7 @@ impl Renderer {
             render_graph,
             swapchain_node,
             frame_count: 0,
+            shader_watcher,
         })
     }
 
@@ -586,6 +584,49 @@ impl Renderer {
         }
 
         self.device.reset_context_pool(context_pool)?;
+
+        let reloaded_shader = self.shader_watcher.update(|watch_event| {
+            if let render::shader::DebouncedEvent::Write(path) = watch_event {
+                self.device
+                    .shaders
+                    .iter()
+                    .find(|(_handle, shader)| shader.path == path)
+                    .map(|(handle, _shader)| handle)
+            } else {
+                None
+            }
+        });
+
+        if let Some(reloaded_shader) = reloaded_shader {
+            self.device.wait_idle().unwrap();
+
+            self.device.update_shader_from_fs(reloaded_shader)?;
+
+            let graphics_programs_to_reload: Vec<_> = self
+                .device
+                .graphics_programs
+                .iter()
+                .filter(|(_handle, program)| {
+                    program.graphics_state.vertex_shader == reloaded_shader
+                        || program.graphics_state.fragment_shader == reloaded_shader
+                })
+                .map(|(handle, _program)| handle)
+                .collect();
+
+            for program_handle in graphics_programs_to_reload {
+                let pipeline_count = self
+                    .device
+                    .graphics_programs
+                    .get(program_handle)
+                    .pipelines
+                    .len();
+
+                for i_pipeline in 0..pipeline_count {
+                    self.device
+                        .compile_graphics_program_pipeline(program_handle, i_pipeline)?;
+                }
+            }
+        }
 
         self.device.update_bindless_set();
         self.uniform_buffer.start_frame();
@@ -834,9 +875,6 @@ impl App {
 fn main() {
     profile::init();
 
-    let mut asset_dir = PathBuf::from(concat!(env!("OUT_DIR"), "/"));
-    asset_dir.push("dummy_file");
-
     let mut event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title("Cripsy Waffle")
@@ -844,10 +882,7 @@ fn main() {
         .unwrap();
 
     let ui_font = Font::from_file(
-        asset_dir
-            .with_file_name("iAWriterQuattroS-Regular.ttf")
-            .to_str()
-            .unwrap(),
+        concat!(env!("OUT_DIR"), "/", "iAWriterQuattroS-Regular.ttf"),
         0,
     )
     .unwrap();

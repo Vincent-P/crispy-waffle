@@ -51,6 +51,16 @@ rule spv
     Ok(())
 }
 
+fn copy_resource(filename: &str) -> std::io::Result<u64> {
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let input_path = Path::new("resources").join(filename);
+    let output_path = Path::new(&out_dir).join(filename);
+
+    let res = std::fs::copy(&input_path, &output_path);
+    println!("cargo:warning={:?} -> {:?}", &input_path, &output_path);
+    res
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=shaders");
     let shader_deps = ["render"];
@@ -64,4 +74,6 @@ fn main() {
         .expect("failed to execute process")
         .success();
     assert!(success);
+
+    copy_resource("iAWriterQuattroS-Regular.ttf").unwrap();
 }

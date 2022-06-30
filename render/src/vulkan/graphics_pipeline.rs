@@ -101,12 +101,14 @@ impl Device {
         self.graphics_programs.remove(program_handle);
     }
 
-    pub fn compile_graphics_program(
+    pub fn compile_graphics_program_pipeline(
         &mut self,
         program_handle: Handle<GraphicsProgram>,
-        render_state: RenderState,
-    ) -> VulkanResult<usize> {
+        i_pipeline: usize,
+    ) -> VulkanResult<()> {
         let program = self.graphics_programs.get_mut(program_handle);
+        assert!(i_pipeline < program.pipelines.len());
+        let render_state = &program.render_states[i_pipeline];
 
         let mut dynamic_states = DynamicArray::<vk::DynamicState, 4>::new();
         dynamic_states.push(vk::DynamicState::VIEWPORT);
@@ -218,6 +220,8 @@ impl Device {
             shader_stages.push(shader_info);
         }
 
+        let old_pipeline = program.pipelines[i_pipeline];
+
         let pipeline_info = vk::GraphicsPipelineCreateInfoBuilder::new()
             .layout(self.descriptors.pipeline_layout)
             .vertex_input_state(&vertex_input_info)
@@ -230,18 +234,37 @@ impl Device {
             .depth_stencil_state(&depth_stencil_info)
             .stages(&shader_stages)
             .render_pass(program.renderpass)
-            .subpass(0);
+            .subpass(0)
+            .base_pipeline_handle(old_pipeline);
 
-        let pipeline = unsafe {
+        let new_pipeline = unsafe {
             self.device
                 .create_graphics_pipelines(program.cache, &[pipeline_info], None)
                 .result()?[0]
         };
 
-        let index = program.pipelines.len();
-        program.pipelines.push(pipeline);
-        program.render_states.push(render_state);
+        if !old_pipeline.is_null() {
+            unsafe {
+                self.device.destroy_pipeline(old_pipeline, None);
+            }
+        }
 
+        program.pipelines[i_pipeline] = new_pipeline;
+
+        Ok(())
+    }
+
+    pub fn compile_graphics_program(
+        &mut self,
+        program_handle: Handle<GraphicsProgram>,
+        render_state: RenderState,
+    ) -> VulkanResult<usize> {
+        let program = self.graphics_programs.get_mut(program_handle);
+
+        let index = program.pipelines.len();
+        program.pipelines.push(vk::Pipeline::null());
+        program.render_states.push(render_state);
+        self.compile_graphics_program_pipeline(program_handle, index)?;
         Ok(index)
     }
 }
