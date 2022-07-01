@@ -64,7 +64,7 @@ fn copy_resource(filename: &str) -> std::io::Result<u64> {
 fn main() {
     println!("cargo:rerun-if-changed=shaders");
     let shader_deps = ["render"];
-    let shaders = ["ui.vert", "ui.frag"];
+    let shaders = ["ui.vert", "ui.frag", "demo.comp"];
 
     create_ninja_build(&shaders, &shader_deps).expect("failed to generate ninja build file");
 

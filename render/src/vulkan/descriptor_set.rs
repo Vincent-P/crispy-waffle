@@ -180,6 +180,24 @@ impl BindlessSet {
         self.sampler_images[image_index]
     }
 
+    pub fn bind_storage_image(&mut self, image_handle: Handle<Image>) -> usize {
+        let new_index = self.free_lists[PER_IMAGE].pop().unwrap();
+        assert!(new_index != !0usize);
+        self.storage_images[new_index] = image_handle;
+        self.pending_binds[PER_IMAGE].push(new_index);
+        new_index
+    }
+
+    pub fn unbind_storage_image(&mut self, image_index: usize) {
+        self.storage_images[image_index] = Handle::invalid();
+        self.free_lists[PER_IMAGE].push(image_index);
+        self.pending_unbinds[PER_IMAGE].push(image_index);
+    }
+
+    pub fn get_storage_image(&self, image_index: usize) -> Handle<Image> {
+        self.storage_images[image_index]
+    }
+
     pub fn bind_storage_buffer(&mut self, buffer_handle: Handle<Buffer>) -> usize {
         let new_index = self.free_lists[PER_BUFFER].pop().unwrap();
         assert!(new_index != !0usize);

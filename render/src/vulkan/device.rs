@@ -1,4 +1,5 @@
 use super::buffer::*;
+use super::compute_pipeline::*;
 use super::contexts::*;
 use super::descriptor_set::*;
 use super::error::*;
@@ -45,6 +46,7 @@ pub struct Device {
     pub shaders: Pool<Shader>,
     pub descriptors: DeviceDescriptors,
     pub graphics_programs: Pool<GraphicsProgram>,
+    pub compute_programs: Pool<ComputeProgram>,
     pub sampler: vk::Sampler,
 }
 
@@ -202,11 +204,23 @@ impl Device {
                 pipeline_layout,
             },
             graphics_programs: Pool::new(),
+            compute_programs: Pool::new(),
             sampler,
         };
 
         // Empty image for bindless clear #0
-        device.create_image(Default::default()).unwrap();
+        device
+            .create_image(ImageSpec {
+                name: String::from("empty"),
+                usages: vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::SAMPLED
+                    | vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    | vk::ImageUsageFlags::STORAGE,
+
+                ..Default::default()
+            })
+            .unwrap();
 
         Ok(device)
     }
@@ -454,7 +468,7 @@ impl Device {
                 descriptor_copies.push(
                     vk::CopyDescriptorSetBuilder::new()
                         .src_set(bindless_set.vkset)
-                        .src_binding(0)
+                        .src_binding(i_set as u32)
                         .src_array_element(0)
                         .dst_set(bindless_set.vkset)
                         .dst_binding(i_set as u32)

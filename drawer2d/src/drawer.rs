@@ -602,7 +602,10 @@ impl TexturedRect {
     pub fn new(rect: Rect) -> Self {
         Self {
             rect,
-            uv: Rect::default(),
+            uv: Rect {
+                pos: [0.0, 0.0],
+                size: [1.0, 1.0],
+            },
             texture_descriptor: !0u32,
             i_clip_rect: !0u32,
             border_radius: 0.0,

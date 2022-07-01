@@ -1,4 +1,5 @@
 use super::buffer::*;
+use super::compute_pipeline::*;
 use super::context_pool::*;
 use super::descriptor_set::*;
 use super::device::*;
@@ -49,6 +50,16 @@ impl BaseContext {
                 );
             }
         } else if self.queue_type == queues::GRAPHICS {
+            unsafe {
+                device.device.cmd_bind_descriptor_sets(
+                    self.cmd,
+                    vk::PipelineBindPoint::COMPUTE,
+                    device.descriptors.pipeline_layout,
+                    0,
+                    &[global_set],
+                    &[],
+                );
+            }
             unsafe {
                 device.device.cmd_bind_descriptor_sets(
                     self.cmd,
@@ -308,6 +319,12 @@ impl AsMut<TransferContext> for ComputeContext {
     }
 }
 
+impl AsRef<ComputeContext> for ComputeContext {
+    fn as_ref(&self) -> &ComputeContext {
+        self
+    }
+}
+
 impl AsMut<ComputeContext> for ComputeContext {
     fn as_mut(&mut self) -> &mut ComputeContext {
         self
@@ -363,6 +380,28 @@ impl ComputeContext {
                     &[offset],
                 );
             }
+        }
+    }
+
+    pub fn bind_compute_pipeline(&self, device: &Device, program_handle: Handle<ComputeProgram>) {
+        let base_context = self.base_context();
+        let program = device.compute_programs.get(program_handle);
+        let pipeline = program.pipeline;
+        unsafe {
+            device.device.cmd_bind_pipeline(
+                base_context.cmd,
+                vk::PipelineBindPoint::COMPUTE,
+                pipeline,
+            );
+        }
+    }
+
+    pub fn dispatch(&self, device: &Device, size: [u32; 3]) {
+        let base_context = self.base_context();
+        unsafe {
+            device
+                .device
+                .cmd_dispatch(base_context.cmd, size[0], size[1], size[2]);
         }
     }
 }

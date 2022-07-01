@@ -111,6 +111,10 @@ impl RenderGraph {
 
         Ok(())
     }
+
+    pub fn i_frame(&self) -> u64 {
+        self.i_frame
+    }
 }
 
 pub struct GraphicPass {

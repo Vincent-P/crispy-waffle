@@ -158,7 +158,7 @@ impl ResourceRegistry {
         self.image_pool.remove(&image_handle);
     }
 
-    pub(crate) fn resolve_image(
+    pub fn resolve_image(
         &mut self,
         device: &mut vulkan::Device,
         desc_handle: Handle<TextureDesc>,
@@ -176,6 +176,11 @@ impl ResourceRegistry {
                 mip_levels: 1,
                 image_type: desc.image_type,
                 format: desc.format,
+                usages: vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::SAMPLED
+                    | vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    | vk::ImageUsageFlags::STORAGE,
                 ..Default::default()
             };
 
@@ -207,6 +212,18 @@ impl ResourceRegistry {
     }
 
     pub(crate) fn texture_desc_size(&self, texture_size: TextureSize) -> [i32; 3] {
+        match texture_size {
+            TextureSize::Absolute(absolute) => absolute,
+            TextureSize::ScreenRelative(relative) => {
+                let width = (relative[0] * self.screen_size[0]) as i32;
+                let height = (relative[1] * self.screen_size[1]) as i32;
+                [width, height, 1]
+            }
+        }
+    }
+
+    pub fn texture_desc_handle_size(&self, desc_handle: Handle<TextureDesc>) -> [i32; 3] {
+        let texture_size = self.texture_descs.get(desc_handle).size;
         match texture_size {
             TextureSize::Absolute(absolute) => absolute,
             TextureSize::ScreenRelative(relative) => {

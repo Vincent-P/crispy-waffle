@@ -153,7 +153,7 @@ mod custom_render {
     use drawer2d::drawer::Drawer;
     use exo::{dynamic_array::DynamicArray, pool::Handle};
     use render::{bindings, render_graph::graph::*, shader_path, vk, vulkan};
-    use std::{mem::size_of, rc::Rc};
+    use std::{cell::RefCell, mem::size_of, rc::Rc};
 
     pub struct UiPass {
         pub glyph_atlas: Handle<vulkan::Image>,
@@ -198,6 +198,11 @@ mod custom_render {
                 name: String::from("glyph atlas"),
                 size: [glyph_atlas_size[0], glyph_atlas_size[1], 1],
                 format: vk::Format::R8_UNORM,
+                usages: vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::SAMPLED
+                    | vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    | vk::ImageUsageFlags::STORAGE,
                 ..Default::default()
             })?;
 
@@ -354,6 +359,91 @@ mod custom_render {
             graph.graphics_pass(output, execute);
         }
     }
+
+    pub struct DemoNode {
+        program: Handle<vulkan::ComputeProgram>,
+        resolved_output_descriptor: u32,
+    }
+
+    impl DemoNode {
+        pub fn new(device: &mut vulkan::Device) -> vulkan::VulkanResult<DemoNode> {
+            let shader_handle = device.create_shader(shader_path!("demo.comp.spv"))?;
+            let node = DemoNode {
+                program: device.create_compute_program(String::from("demo"), shader_handle)?,
+                resolved_output_descriptor: 0,
+            };
+            Ok(node)
+        }
+
+        pub fn output_descriptor(&self) -> u32 {
+            self.resolved_output_descriptor
+        }
+
+        pub fn register_graph(
+            pass: &Rc<RefCell<Self>>,
+            graph: &mut RenderGraph,
+            output: Handle<TextureDesc>,
+        ) {
+            let demo_program = pass.borrow().program;
+            let pass = Rc::clone(pass);
+
+            let execute = move |graph: &mut RenderGraph,
+                                api: &mut PassApi,
+                                ctx: &mut vulkan::ComputeContext|
+                  -> vulkan::VulkanResult<()> {
+                {
+                    let output_image = graph.resources.resolve_image(api.device, output)?;
+
+                    let output_descriptor =
+                        api.device.images.get(output_image).full_view.storage_idx;
+                    let output_sampled_descriptor =
+                        api.device.images.get(output_image).full_view.sampled_idx;
+                    pass.borrow_mut().resolved_output_descriptor = output_sampled_descriptor;
+
+                    #[repr(C, packed)]
+                    struct Options {
+                        pub storage_output_frame: u32,
+                        pub i_frame: u32,
+                    }
+
+                    let options = bindings::bind_shader_options(
+                        api.device,
+                        api.uniform_buffer,
+                        &ctx,
+                        size_of::<Options>(),
+                    )
+                    .unwrap();
+                    unsafe {
+                        let p_options =
+                            std::slice::from_raw_parts_mut((*options).as_ptr() as *mut Options, 1);
+                        p_options[0] = Options {
+                            storage_output_frame: output_descriptor,
+                            i_frame: graph.i_frame() as u32,
+                        };
+                    }
+
+                    ctx.base_context().barrier(
+                        api.device,
+                        output_image,
+                        vulkan::ImageState::ComputeShaderReadWrite,
+                    );
+
+                    ctx.bind_compute_pipeline(api.device, demo_program);
+
+                    let output_size = graph.resources.texture_desc_handle_size(output);
+                    let size = [
+                        ((output_size[0] as u32) / 16) + 1,
+                        ((output_size[1] as u32) / 16) + 1,
+                        1,
+                    ];
+                    ctx.dispatch(api.device, size);
+                }
+
+                Ok(())
+            };
+            graph.raw_pass(execute);
+        }
+    }
 }
 
 use drawer2d::{drawer::*, font::*, rect::*};
@@ -386,6 +476,7 @@ struct Renderer {
     render_graph: render_graph::graph::RenderGraph,
     ui_node: custom_render::UiPass,
     swapchain_node: Rc<RefCell<render_graph::builtins::SwapchainPass>>,
+    demo_node: Rc<RefCell<custom_render::DemoNode>>,
     frame_count: usize,
     shader_watcher: shader::ShaderWatcher,
 }
@@ -444,6 +535,8 @@ impl Renderer {
             fence: device.create_fence()?,
             surface,
         }));
+
+        let demo_node = Rc::new(RefCell::new(custom_render::DemoNode::new(&mut device)?));
 
         let context_pools: [vulkan::ContextPool; FRAME_QUEUE_LENGTH] =
             [device.create_context_pool()?, device.create_context_pool()?];
@@ -510,6 +603,7 @@ impl Renderer {
             ui_node,
             render_graph,
             swapchain_node,
+            demo_node,
             frame_count: 0,
             shader_watcher,
         })
@@ -533,7 +627,11 @@ impl Renderer {
         self.instance.destroy();
     }
 
-    pub fn render(&mut self, drawer: Option<&Rc<Drawer<'static>>>) -> VulkanResult<()> {
+    pub fn render(
+        &mut self,
+        drawer: Option<&Rc<Drawer<'static>>>,
+        demo_viewport: Option<[i32; 2]>,
+    ) -> VulkanResult<()> {
         use render_graph::{
             builtins,
             graph::{TextureDesc, TextureSize},
@@ -550,6 +648,19 @@ impl Renderer {
             String::from("render buffer desc"),
             TextureSize::ScreenRelative([1.0, 1.0]),
         ));
+
+        if let Some(viewport_size) = demo_viewport {
+            let demo_buffer = self.render_graph.output_image(TextureDesc::new(
+                String::from("demo viewport"),
+                TextureSize::Absolute([viewport_size[0], viewport_size[1], 1]),
+            ));
+
+            custom_render::DemoNode::register_graph(
+                &self.demo_node,
+                &mut self.render_graph,
+                demo_buffer,
+            );
+        }
 
         if let Some(drawer) = drawer {
             self.ui_node
@@ -669,6 +780,7 @@ struct App {
     docking: ui_docking::Docking,
     show_fps: bool,
     font_size: f32,
+    demo_viewport: Option<[i32; 2]>,
 }
 
 impl App {
@@ -831,6 +943,16 @@ impl App {
             cursor[1] += 3.0 * em;
         }
 
+        if let Some(demo_rect) = self.docking.tabview("Demo") {
+            self.demo_viewport = Some([demo_rect.size[0] as i32, demo_rect.size[1] as i32]);
+            let texture_descriptor = self.renderer.demo_node.borrow().output_descriptor();
+            drawer.draw_textured_rect(
+                TexturedRect::new(demo_rect).texture_descriptor(texture_descriptor),
+            );
+        } else {
+            self.demo_viewport = None;
+        }
+
         self.docking.end_docking(&mut self.ui, drawer);
 
         // -- Footer
@@ -868,7 +990,7 @@ impl App {
 
     pub fn draw_gpu(&mut self) -> VulkanResult<()> {
         self.ui.end_frame();
-        self.renderer.render(Some(&self.drawer))
+        self.renderer.render(Some(&self.drawer), self.demo_viewport)
     }
 }
 
@@ -907,6 +1029,7 @@ fn main() {
         show_fps: true,
         font_size,
         window_size: [1280.0, 720.0],
+        demo_viewport: None,
     };
 
     let now = Instant::now();

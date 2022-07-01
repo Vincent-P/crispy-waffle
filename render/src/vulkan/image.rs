@@ -176,10 +176,18 @@ impl Device {
             is_proxy: false,
         });
 
-        self.images.get_mut(image_handle).full_view.sampled_idx =
-            self.descriptors
-                .bindless_set
-                .bind_sampler_image(image_handle) as u32;
+        let image_mut = self.images.get_mut(image_handle);
+        image_mut.full_view.sampled_idx = self
+            .descriptors
+            .bindless_set
+            .bind_sampler_image(image_handle) as u32;
+
+        if image_mut.spec.usages.contains(vk::ImageUsageFlags::STORAGE) {
+            image_mut.full_view.storage_idx =
+                self.descriptors
+                    .bindless_set
+                    .bind_storage_image(image_handle) as u32;
+        }
 
         Ok(image_handle)
     }
@@ -233,16 +241,19 @@ impl Device {
                 .unbind_sampler_image(image.full_view.sampled_idx as usize);
             image.full_view.sampled_idx = 0;
         }
+
+        if image.full_view.storage_idx > 0 {
+            self.descriptors
+                .bindless_set
+                .unbind_storage_image(image.full_view.storage_idx as usize);
+            image.full_view.storage_idx = 0;
+        }
     }
 
     pub fn destroy_image(&mut self, image_handle: Handle<Image>) {
-        let image = self.images.get_mut(image_handle);
+        self.unbind_image(image_handle);
 
-        if image.full_view.sampled_idx > 0 {
-            self.descriptors
-                .bindless_set
-                .unbind_sampler_image(image.full_view.sampled_idx as usize);
-        }
+        let image = self.images.get_mut(image_handle);
 
         unsafe {
             if !image.is_proxy {

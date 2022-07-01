@@ -39,11 +39,20 @@ float4 textured_rect(u32 i_primitive, u32 corner, float2 uv)
 	u32 primitive_offset = primitive_bytes_offset / sizeof_textured_rect;
 	TexturedRect rect = global_buffers_textured_rects[vertices_descriptor_index].rects[primitive_offset + i_primitive];
 
-	float alpha_mask = texture(global_textures[glyph_atlas_descriptor], uv).r;
-	float4 base_color = unpackUnorm4x8(rect.base_color);
-	float4 color = base_color;
-	color.a = alpha_mask;
-	color.rgb *= color.a;
+	float4 color = float4(1.0);
+	if (rect.texture_descriptor == glyph_atlas_descriptor)
+	{
+		float alpha_mask = texture(global_textures[glyph_atlas_descriptor], uv).r;
+		float4 base_color = unpackUnorm4x8(rect.base_color);
+		color = base_color;
+		color.a = alpha_mask;
+		color.rgb *= color.a;
+	}
+	else
+	{
+		color = texture(global_textures[nonuniformEXT(rect.texture_descriptor)], uv);
+	}
+
 	return color;
 }
 

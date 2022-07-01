@@ -1,4 +1,5 @@
 pub mod buffer;
+pub mod compute_pipeline;
 pub mod context_pool;
 pub mod contexts;
 pub mod descriptor_set;
@@ -15,6 +16,7 @@ pub mod queues;
 pub mod shader;
 pub mod surface;
 pub use buffer::*;
+pub use compute_pipeline::*;
 pub use context_pool::*;
 pub use contexts::*;
 pub use descriptor_set::*;
