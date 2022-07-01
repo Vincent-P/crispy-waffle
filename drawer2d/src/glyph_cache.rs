@@ -82,6 +82,7 @@ impl GlyphCache {
         face_hash: u64,
         glyph_image: &GlyphImage,
     ) -> Option<etagere::Allocation> {
+        profile::scope!("alloc glyph");
         let has_empty_area = glyph_image.placement.width == 0 || glyph_image.placement.height == 0;
 
         if has_empty_area {
@@ -151,6 +152,7 @@ impl GlyphCache {
         face: &Face,
         glyph_id: GlyphId,
     ) -> (Option<[i32; 2]>, &GlyphImage) {
+        profile::scope!("queue glyph");
         // Get the face hash
         let face_hash = {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -260,6 +262,7 @@ pub fn render_glyph(
     face: &Face,
     glyph_id: GlyphId,
 ) -> Option<GlyphImage> {
+    profile::scope!("render glyph");
     use swash::zeno::{Format, Vector};
 
     let x: f32 = 0.0;

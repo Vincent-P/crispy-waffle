@@ -154,6 +154,8 @@ impl<'a> Drawer<'a> {
     }
 
     pub fn shape_text(&mut self, face: &Face, text: &str) -> TextRun {
+        profile::scope!("shape text");
+
         let mut shaper = self
             .shape_context
             .builder(face.font_ref)
@@ -189,6 +191,7 @@ impl<'a> Drawer<'a> {
     }
 
     pub fn layout_text(text_run: &TextRun, width_constraint: Option<f32>) -> TextLayout {
+        profile::scope!("layout text");
         let mut layout = TextLayout {
             size: [0.0, 0.0],
             glyph_positions: Vec::new(),
@@ -359,6 +362,7 @@ impl<'a> Drawer<'a> {
         // position, uv, i_clip_rect, texture_descriptor
         rects: &[TexturedRect],
     ) {
+        profile::scope!("draw textured rect");
         let i_first_rect = Self::begin_primitive::<TexturedRect>(vertex_byte_offset);
         let vertices = Self::get_primitive_slice::<TexturedRect>(
             vertex_buffer,
@@ -391,6 +395,7 @@ impl<'a> Drawer<'a> {
         // position, uv, i_clip_rect, texture_descriptor
         rects: &[ColoredRect],
     ) {
+        profile::scope!("draw textured rect");
         let i_first_rect = Self::begin_primitive::<ColoredRect>(vertex_byte_offset);
         let vertices = Self::get_primitive_slice::<ColoredRect>(
             vertex_buffer,

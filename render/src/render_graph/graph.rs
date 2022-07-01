@@ -41,6 +41,7 @@ impl RenderGraph {
         mut api: PassApi,
         context_pool: &mut vulkan::ContextPool,
     ) -> vulkan::VulkanResult<()> {
+        profile::scope!("execute graph");
         self.resources.begin_frame(api.device, self.i_frame);
 
         let mut ctx = api.device.get_graphics_context(context_pool)?;
@@ -52,6 +53,7 @@ impl RenderGraph {
         for pass in passes {
             match pass {
                 Pass::Graphic(mut pass) => {
+                    profile::scope!("graphics");
                     let output_desc = self.resources.texture_descs.get(pass.color_attachment);
                     let output_size = self.resources.texture_desc_size(output_desc.size);
 
@@ -100,6 +102,7 @@ impl RenderGraph {
                     ctx.end_pass(api.device);
                 }
                 Pass::Raw(mut pass) => {
+                    profile::scope!("raw");
                     (pass.execute_cb)(self, &mut api, ctx.as_mut())?;
                 }
             }

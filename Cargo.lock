@@ -257,6 +257,7 @@ version = "0.1.0"
 dependencies = [
  "etagere",
  "nohash-hasher",
+ "profile",
  "swash",
 ]
 
@@ -848,6 +849,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "profile"
+version = "0.1.0"
+dependencies = [
+ "optick",
+ "tracy-client",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -917,6 +926,7 @@ dependencies = [
  "erupt",
  "exo",
  "notify",
+ "profile",
  "raw-window-handle",
  "thiserror",
  "vk-alloc",
@@ -929,10 +939,9 @@ dependencies = [
  "anyhow",
  "drawer2d",
  "exo",
- "optick",
+ "profile",
  "raw-window-handle",
  "render",
- "tracy-client",
  "ui",
  "ui_docking",
  "winit",

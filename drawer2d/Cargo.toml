@@ -9,3 +9,4 @@ edition = "2021"
 swash = "0.1.4"
 etagere = "0.2.7"
 nohash-hasher = "0.2.0"
+profile = { path = "../profile" }

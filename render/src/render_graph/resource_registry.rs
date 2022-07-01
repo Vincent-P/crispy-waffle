@@ -90,8 +90,8 @@ impl ResourceRegistry {
 
         let mut img_to_remove: Vec<Handle<vulkan::Image>> = Default::default();
         for (image_handle, metadata) in &mut self.image_pool {
-            // Unbind images from the bindless set unused for 2 frames
-            if (metadata.last_frame_used + 4) < i_frame {
+            // Unbind images from the bindless set unused for 18 frames
+            if (metadata.last_frame_used + 18) < i_frame {
                 device.unbind_image(*image_handle);
             }
 
@@ -198,6 +198,7 @@ impl ResourceRegistry {
             // If there isn't any matching image in the pool, create a new one
             if resolved_image_handle.is_none() {
                 resolved_image_handle = Some(device.create_image(desc_spec)?);
+                device.update_bindless_set();
             }
 
             let resolved_image_handle = resolved_image_handle.unwrap();

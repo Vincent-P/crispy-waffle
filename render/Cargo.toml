@@ -12,3 +12,4 @@ erupt = "0.22.0"
 raw-window-handle = "0.4.2"
 thiserror = "1.0"
 notify = "4.0.17"
+profile = {path= "../profile"}

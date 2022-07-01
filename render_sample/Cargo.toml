@@ -11,13 +11,7 @@ render = {path= "../render"}
 drawer2d = {path= "../drawer2d"}
 ui = {path= "../ui"}
 ui_docking = {path= "../ui_docking"}
+profile = {path= "../profile"}
 winit = "0.26.1"
 anyhow = "1.0"
 raw-window-handle = "0.4.2"
-optick = { version = "1.3.4", optional = true }
-tracy-client = { version = "0.13.1", optional = true }
-
-[features]
-default = []
-optick = ["dep:optick"]
-tracy = ["dep:tracy-client"]
