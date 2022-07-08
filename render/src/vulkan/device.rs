@@ -108,8 +108,7 @@ impl Device {
             graphics_family_idx.ok_or(VulkanError::MissingQueue(vk::QueueFlags::GRAPHICS))?;
         let compute_family_idx =
             compute_family_idx.ok_or(VulkanError::MissingQueue(vk::QueueFlags::COMPUTE))?;
-        let transfer_family_idx =
-            transfer_family_idx.ok_or(VulkanError::MissingQueue(vk::QueueFlags::TRANSFER))?;
+        let transfer_family_idx = transfer_family_idx.unwrap_or(compute_family_idx);
 
         let device_info = vk::DeviceCreateInfoBuilder::new()
             .queue_create_infos(&queue_create_infos)

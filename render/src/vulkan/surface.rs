@@ -24,6 +24,8 @@ pub struct Surface {
     pub images: PerImage<Handle<Image>>,
     pub image_acquired_semaphores: PerImage<vk::Semaphore>,
     pub can_present_semaphores: PerImage<vk::Semaphore>,
+    pub is_outdated: bool,
+    pub size_requested: Option<[i32; 2]>,
 }
 
 impl Surface {
@@ -32,6 +34,7 @@ impl Surface {
         device: &mut Device,
         physical_device: &mut PhysicalDevice,
         window_handle: &WindowHandle,
+        size_requested: Option<[i32; 2]>,
     ) -> VulkanResult<Surface> {
         let surface = unsafe {
             erupt::utils::surface::create_surface(&instance.instance, window_handle, None)
@@ -101,6 +104,8 @@ impl Surface {
             images: DynamicArray::new(),
             image_acquired_semaphores: DynamicArray::new(),
             can_present_semaphores: DynamicArray::new(),
+            is_outdated: false,
+            size_requested: size_requested,
         };
 
         surface.create_swapchain(instance, device, physical_device)?;
@@ -127,10 +132,28 @@ impl Surface {
                 .get_physical_device_surface_capabilities_khr(physical_device.device, self.surface)
                 .result()?
         };
-        self.size[0] = capabilities.current_extent.width as i32;
-        self.size[1] = capabilities.current_extent.height as i32;
 
-        let image_count = (capabilities.min_image_count + 1).min(capabilities.max_image_count);
+        let has_current_extent = capabilities.current_extent.width != 0xFFFFFFFF
+            && capabilities.current_extent.height != 0xFFFFFFFF;
+
+        let size_requested = self.size_requested.take();
+        if let Some(size) = size_requested {
+            self.size = size;
+        } else if has_current_extent {
+            self.size[0] = capabilities.current_extent.width as i32;
+            self.size[1] = capabilities.current_extent.height as i32;
+        } else {
+            eprintln!("Default swapchain size: 1024x1024");
+            self.size[0] = 1024;
+            self.size[1] = 1024;
+        }
+
+        let max_count = if capabilities.max_image_count == 0 {
+            u32::MAX
+        } else {
+            capabilities.max_image_count
+        };
+        let image_count = (capabilities.min_image_count + 1).min(max_count);
 
         let image_usages = vk::ImageUsageFlags::COLOR_ATTACHMENT
             | vk::ImageUsageFlags::STORAGE
@@ -142,7 +165,10 @@ impl Surface {
             .min_image_count(image_count)
             .image_format(self.format.format)
             .image_color_space(self.format.color_space)
-            .image_extent(capabilities.current_extent)
+            .image_extent(vk::Extent2D {
+                width: self.size[0] as u32,
+                height: self.size[1] as u32,
+            })
             .image_array_layers(1)
             .image_usage(image_usages)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
@@ -178,6 +204,7 @@ impl Surface {
                 swapchain_images[i_image],
             )?);
         }
+        assert!(!self.images.is_empty());
 
         let semaphore_create_info = vk::SemaphoreCreateInfoBuilder::new();
         for i in 0..self.images.len() {

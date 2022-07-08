@@ -1,6 +1,6 @@
 use erupt::vk;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PhysicalDevice {
     pub device: vk::PhysicalDevice,
     pub properties: vk::PhysicalDeviceProperties,

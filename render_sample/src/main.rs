@@ -436,6 +436,7 @@ struct Renderer {
 impl Renderer {
     pub fn new<WindowHandle: HasRawWindowHandle>(
         window_handle: &WindowHandle,
+        window_size: [i32; 2],
     ) -> vulkan::VulkanResult<Self> {
         let instance = vulkan::Instance::new(vulkan::InstanceSpec {
             enable_validation: cfg!(debug_assertions),
@@ -481,7 +482,13 @@ impl Renderer {
             physical_device,
         )?;
 
-        let surface = vulkan::Surface::new(&instance, &mut device, physical_device, window_handle)?;
+        let surface = vulkan::Surface::new(
+            &instance,
+            &mut device,
+            physical_device,
+            window_handle,
+            Some(window_size),
+        )?;
         let swapchain_node = Rc::new(RefCell::new(render_graph::builtins::SwapchainPass {
             i_frame: 0,
             fence: device.create_fence()?,
@@ -956,13 +963,18 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
+    let inner_size = {
+        let window_size: winit::dpi::LogicalSize<f32> = window.inner_size().to_logical(1.0);
+        [window_size.width as i32, window_size.height as i32]
+    };
+
     let ui_font = Font::from_file(
         concat!(env!("OUT_DIR"), "/", "iAWriterQuattroS-Regular.ttf"),
         0,
     )
     .unwrap();
 
-    let renderer = Renderer::new(&window).unwrap();
+    let renderer = Renderer::new(&window, inner_size).unwrap();
     let drawer = Drawer::new(
         unsafe { &mut DRAWER_VERTEX_MEMORY },
         unsafe { &mut DRAWER_INDEX_MEMORY },
@@ -981,7 +993,7 @@ fn main() {
         docking: ui_docking::Docking::new(),
         show_fps: true,
         font_size,
-        window_size: [1280.0, 720.0],
+        window_size: [inner_size[0] as f32, inner_size[1] as f32],
         demo_viewport: None,
     };
 
@@ -993,13 +1005,24 @@ fn main() {
 
         // Only runs event loop when there are events, ControlFlow::Poll runs the loop even when empty
         *control_flow = ControlFlow::Poll;
-
         match event {
             // Close when exit is requested
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 window_id,
             } if window_id == window.id() => *control_flow = ControlFlow::Exit,
+
+            Event::WindowEvent {
+                event: WindowEvent::Resized(physical_size),
+                window_id,
+            } if window_id == window.id() => {
+                let window_size: winit::dpi::LogicalSize<f32> = physical_size.to_logical(1.0);
+                let mut surface = &mut app.renderer.swapchain_node.borrow_mut().surface;
+                surface.is_outdated = true;
+                surface.size_requested =
+                    Some([window_size.width as i32, window_size.height as i32]);
+                app.window_size = [window_size.width, window_size.height];
+            }
 
             Event::WindowEvent {
                 event: WindowEvent::CursorMoved { position, .. },

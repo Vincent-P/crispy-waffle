@@ -13,6 +13,7 @@ const LAYER_KHRONOS_VALIDATION: *const c_char = cstr!("VK_LAYER_KHRONOS_validati
 const VK_KHR_SURFACE_EXTENSION_NAME: *const c_char = cstr!("VK_KHR_surface");
 const VK_KHR_WIN32_SURFACE_EXTENSION_NAME: *const c_char = cstr!("VK_KHR_win32_surface");
 const VK_KHR_XCB_SURFACE_EXTENSION_NAME: *const c_char = cstr!("VK_KHR_xcb_surface");
+const VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME: *const c_char = cstr!("VK_KHR_wayland_surface");
 const VK_EXT_DEBUG_UTILS_EXTENSION_NAME: *const c_char = cstr!("VK_EXT_debug_utils");
 
 pub const MAX_PHYSICAL_DEVICES: usize = 4;
@@ -72,7 +73,7 @@ impl Instance {
             if cfg!(windows) {
                 instance_extensions.push(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
             } else if cfg!(unix) {
-                instance_extensions.push(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
+                instance_extensions.push(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
             }
         }
         instance_extensions.push(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
