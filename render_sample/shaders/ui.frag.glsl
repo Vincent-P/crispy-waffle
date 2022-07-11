@@ -28,7 +28,7 @@ float4 color_rect(u32 i_primitive, u32 corner, float2 uv)
 	u32 primitive_offset = primitive_bytes_offset / sizeof_color_rect;
 	ColorRect rect = global_buffers_color_rects[vertices_descriptor_index].rects[primitive_offset + i_primitive];
 
-	float sd = sdRoundedBox((uv - float2(0.5)) * rect.rect.size, float2(0.5) * rect.rect.size, rect.border_radius);
+	float sd = sdf_rounded_box_2d((uv - float2(0.5)) * rect.rect.size, float2(0.5) * rect.rect.size, rect.border_radius);
 	float alpha = clamp(0.5 - sd, 0.0, 1.0);
 	float4 color = unpackUnorm4x8(rect.color);
 	return color * alpha;

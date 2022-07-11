@@ -69,7 +69,7 @@ mod custom_ui {
             );
             ui.state.add_rect_to_last_container(widget.rect);
 
-            for dt in widget.histogram.frame_times {
+            for dt in widget.histogram.frame_times.iter() {
                 if cursor[0] < widget.rect.pos[0] {
                     break;
                 }
@@ -97,6 +97,23 @@ mod custom_ui {
                 drawer.draw_colored_rect(ColoredRect::new(rect).color(rect_color));
                 ui.state.add_rect_to_last_container(rect);
             }
+
+            const FRAMES_FOR_FPS: usize = 30;
+            let fps = (widget.histogram.frame_times.len().min(FRAMES_FOR_FPS) as f32)
+                / widget
+                    .histogram
+                    .frame_times
+                    .iter()
+                    .take(FRAMES_FOR_FPS)
+                    .fold(0.0, |acc, x| acc + x);
+
+            drawer.draw_label(
+                &ui.theme.face(),
+                &format!("{}", fps),
+                widget.rect,
+                !0u32,
+                ColorU32::greyscale(255),
+            );
         }
     }
 }
@@ -335,6 +352,8 @@ mod custom_render {
             pass: &Rc<RefCell<Self>>,
             graph: &mut RenderGraph,
             output: Handle<TextureDesc>,
+            dt: f32,
+            t: f32,
         ) {
             let demo_program = pass.borrow().program;
             let pass = Rc::clone(pass);
@@ -356,6 +375,8 @@ mod custom_render {
                     struct Options {
                         pub storage_output_frame: u32,
                         pub i_frame: u32,
+                        pub dt: f32,
+                        pub t: f32,
                     }
 
                     let options = bindings::bind_shader_options(
@@ -371,6 +392,8 @@ mod custom_render {
                         p_options[0] = Options {
                             storage_output_frame: output_descriptor,
                             i_frame: graph.i_frame() as u32,
+                            dt,
+                            t,
                         };
                     }
 
@@ -430,6 +453,7 @@ struct Renderer {
     swapchain_node: Rc<RefCell<render_graph::builtins::SwapchainPass>>,
     demo_node: Rc<RefCell<custom_render::DemoNode>>,
     frame_count: usize,
+    time: f32,
     shader_watcher: shader::ShaderWatcher,
 }
 
@@ -564,6 +588,7 @@ impl Renderer {
             swapchain_node,
             demo_node,
             frame_count: 0,
+            time: 0.0,
             shader_watcher,
         })
     }
@@ -590,6 +615,7 @@ impl Renderer {
         &mut self,
         drawer: Option<&Rc<Drawer<'static>>>,
         demo_viewport: Option<[i32; 2]>,
+        dt: f32,
     ) -> VulkanResult<()> {
         use render_graph::{
             builtins,
@@ -619,6 +645,8 @@ impl Renderer {
                 &self.demo_node,
                 &mut self.render_graph,
                 demo_buffer,
+                dt,
+                self.time,
             );
         }
 
@@ -697,6 +725,18 @@ impl Renderer {
                         .compile_graphics_program_pipeline(program_handle, i_pipeline)?;
                 }
             }
+
+            let compute_programs_to_reload: Vec<_> = self
+                .device
+                .compute_programs
+                .iter()
+                .filter(|(_handle, program)| program.shader == reloaded_shader)
+                .map(|(handle, _program)| handle)
+                .collect();
+
+            for program_handle in compute_programs_to_reload {
+                self.device.compile_compute_program(program_handle)?;
+            }
         }
 
         self.device.update_bindless_set();
@@ -718,6 +758,7 @@ impl Renderer {
 
         self.render_graph.execute(pass_api, context_pool)?;
         self.frame_count += 1;
+        self.time += dt;
 
         Ok(())
     }
@@ -747,7 +788,7 @@ impl App {
     pub fn update(&mut self, dt: f32) -> vulkan::VulkanResult<()> {
         self.fps_histogram.push_time(dt);
         self.draw_ui();
-        self.draw_gpu()
+        self.draw_gpu(dt)
     }
 }
 
@@ -948,9 +989,10 @@ impl App {
         }
     }
 
-    pub fn draw_gpu(&mut self) -> VulkanResult<()> {
+    pub fn draw_gpu(&mut self, dt: f32) -> VulkanResult<()> {
         self.ui.end_frame();
-        self.renderer.render(Some(&self.drawer), self.demo_viewport)
+        self.renderer
+            .render(Some(&self.drawer), self.demo_viewport, dt)
     }
 }
 

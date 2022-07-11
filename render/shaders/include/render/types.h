@@ -22,4 +22,7 @@
 const u32 sizeof_float4 = 16;
 #define NaN intBitsToFloat(0xffffffff)
 
+const float PI  = 3.1415926538;
+const float TO_RADIANS = PI / 180.0;
+
 #endif
