@@ -105,7 +105,7 @@ impl Surface {
             image_acquired_semaphores: DynamicArray::new(),
             can_present_semaphores: DynamicArray::new(),
             is_outdated: false,
-            size_requested: size_requested,
+            size_requested,
         };
 
         surface.create_swapchain(instance, device, physical_device)?;

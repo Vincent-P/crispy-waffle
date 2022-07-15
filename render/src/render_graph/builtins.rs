@@ -24,8 +24,7 @@ impl SwapchainPass {
             move |graph: &mut RenderGraph, api: &mut PassApi, ctx: &mut vulkan::ComputeContext| {
                 let mut pass = pass.borrow_mut();
 
-                let mut swapchain_is_outdated =
-                    api.device.acquire_next_swapchain(&mut pass.surface)?;
+                let swapchain_is_outdated = api.device.acquire_next_swapchain(&mut pass.surface)?;
                 pass.surface.is_outdated = pass.surface.is_outdated || swapchain_is_outdated;
                 while pass.surface.is_outdated {
                     api.device.wait_idle()?;
@@ -81,7 +80,7 @@ impl SwapchainPass {
 
                 pass_ref.i_frame += 1;
 
-                let _swapchain_is_outdated = api.device.present(&ctx, &mut pass_ref.surface)?;
+                let _swapchain_is_outdated = api.device.present(&ctx, &pass_ref.surface)?;
 
                 Ok(())
             },

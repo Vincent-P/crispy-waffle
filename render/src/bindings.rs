@@ -2,6 +2,7 @@ use super::ring_buffer::*;
 use super::vulkan::contexts::*;
 use super::vulkan::device::*;
 use super::vulkan::error::*;
+use std::mem::size_of;
 
 pub fn bind_shader_options<Context: AsRef<ComputeContext>>(
     device: &mut Device,
@@ -14,4 +15,19 @@ pub fn bind_shader_options<Context: AsRef<ComputeContext>>(
     let descriptor = &device.descriptors.uniform_descriptor_sets[i_descriptor];
     ctx.as_ref().bind_uniform_set(device, descriptor, offset, 2);
     Ok(slice)
+}
+
+pub fn bind_and_copy_shader_options<Context: AsRef<ComputeContext>, T>(
+    device: &mut Device,
+    ring_buffer: &mut RingBuffer,
+    ctx: &Context,
+    data: T,
+) -> VulkanResult<()> {
+    let options = bind_shader_options(device, ring_buffer, &ctx, size_of::<T>()).unwrap();
+    unsafe {
+        let p_options = std::slice::from_raw_parts_mut((*options).as_ptr() as *mut T, 1);
+        p_options[0] = data;
+    }
+
+    Ok(())
 }

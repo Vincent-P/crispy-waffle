@@ -52,3 +52,9 @@ impl ShaderWatcher {
         }
     }
 }
+
+impl Default for ShaderWatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}

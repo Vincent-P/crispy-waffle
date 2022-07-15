@@ -21,6 +21,7 @@ checksum = "08f9b8508dccb7687a1d6c4ce66b2b0ecef467c94667de27d8d7fe1f8d2a9cdc"
 name = "assets"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "uuid",
 ]
 
@@ -47,6 +48,12 @@ name = "bumpalo"
 version = "3.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4a45a46ab1f2412e53d3a0ade76ffad2025804294569aae387231a0cd6e0899"
+
+[[package]]
+name = "bytes"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
 
 [[package]]
 name = "calloop"
@@ -259,6 +266,21 @@ dependencies = [
  "nohash-hasher",
  "profile",
  "swash",
+]
+
+[[package]]
+name = "editor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "drawer2d",
+ "exo",
+ "profile",
+ "raw-window-handle",
+ "render",
+ "ui",
+ "ui_docking",
+ "winit",
 ]
 
 [[package]]

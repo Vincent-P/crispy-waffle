@@ -8,4 +8,5 @@ members = [
     "ui",
     "ui_docking",
     "render_sample",
+    "editor",
 ]
